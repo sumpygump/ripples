@@ -89,16 +89,25 @@ class Chord:
             "M": [0, 4, 7],
             "m": [0, 3, 7],
             "d": [0, 3, 6],
+            "M7": [0, 4, 7, 11],
+            "m7": [0, 3, 7, 11],
+            "d7": [0, 3, 6],
         },
         2: {
             "M": [-8, -5, 0],
             "m": [-9, -5, 0],
             "d": [-9, -6, 0],
+            "M7": [-8, -5, 0, -1],
+            "m7": [-9, -5, 0, -1],
+            "d7": [-9, -6, 0],
         },
         3: {
             "M": [-5, 0, 4],
             "m": [-5, 0, 3],
             "d": [-6, 0, 3],
+            "M7": [-5, 0, 4, -1],
+            "m7": [-5, 0, 3, -1],
+            "d7": [-6, 0, 3],
         },
     }
 
@@ -144,7 +153,6 @@ def get_durations():
         (5, 5, 10, 10, 10, 80, 80),
     ]
     dur_weights = random.choice(possible_weights)
-    print("weight_profile", dur_weights)
 
     return durations, dur_weights
 
@@ -184,7 +192,8 @@ def get_pitches():
 class Piece:
     """Generatable piece of music"""
 
-    version = 4
+    # The version of this generative engine
+    version = 5
 
     def __init__(self):
         self.pitches = get_pitches()
@@ -204,8 +213,12 @@ class Piece:
         print(f"Accompaniment instrument {instrument_2}")
         print(f"Bass instrument {instrument_3}")
 
+        # Set up the random seed
         self.seed = seed
         random.seed(seed)
+
+        self.beats_per_measure = random.choice([2, 3, 4, 5])
+        print(f"Time signature: {self.beats_per_measure}/4")
 
         self.default_tempo = random.randint(90, 124)
         print(f"Tempo: {self.default_tempo}")
@@ -226,7 +239,7 @@ class Piece:
         )
 
         notes = self.generate_melody(chords)
-        print(notes)
+        # print(notes)
         midi = self.create_track(
             {"instrument": instrument_1, "track": 0, "channel": 0}, notes, midi=midi
         )
@@ -235,7 +248,7 @@ class Piece:
 
         return midi
 
-    def generate_chords(self):
+    def generate_chords(self, measures=4):
         """Generate a chord progression"""
 
         root = 48
@@ -248,13 +261,30 @@ class Piece:
 
         time = 0
         progression = []
-        for _ in range(0, 4):
+        for _ in range(0, measures):
+            # Pick which chord from the scale to use
             pick = random.choices(chords, weights=chord_weights)[0]
+            root_shift, type_ = pick
+
+            # Pick whether to turn into a 7th chord
+            if random.choice([True, False]):
+                type_ = "{}{}".format(type_, "7")
+
+            # Pick an inversion of the chord to use
             inversion = random.choice([1, 2, 3])
+
             progression.append(
-                (time, Chord(root + pick[0], pick[1], inversion=inversion))
+                (
+                    time,
+                    Chord(
+                        root + root_shift,
+                        type_,
+                        duration=self.beats_per_measure,
+                        inversion=inversion,
+                    ),
+                )
             )
-            time = time + 4
+            time = time + self.beats_per_measure
 
         return progression
 
@@ -291,6 +321,8 @@ class Piece:
         for _, chord in chords:
             this_start_time = time
             chord_note = random.choice(chord.spread())
+            # print("chord", chord)
+            # print("chord_note", chord_note)
             pitch = chord_note.pitch + 12  # An octave above
             motive = self.generate_motive(pitch, time, chord_note.duration)
             notes_data.extend(motive)
@@ -310,12 +342,19 @@ class Piece:
         """Generate a little motive around a root note"""
 
         volume = 100
-        interval_deltas = [0, 1, 2, 3, 4, 5, 6, 7]
-        iv_weights = (90, 50, 50, 5, 5, 5, 5, 10)
+        interval_deltas = [0, 1, 2, 3, 4, 5]
+        iv_weights = (90, 50, 50, 5, 5, 10)
         min_pitch = gm.C_2
         max_pitch = gm.C_5
 
-        index = self.pitches.index(root)
+        try:
+            index = self.pitches.index(root)
+        except ValueError:
+            # Is an accidental; add it to the list of pitches?
+            self.pitches.append(root)
+            self.pitches.sort()
+            index = self.pitches.index(root)
+
         pitch = root
 
         notes_data = []
@@ -360,7 +399,7 @@ class Piece:
         track = meta_data.get("track", 0)
         channel = meta_data.get("channel", 0)
         name = meta_data.get("name", "Melody")
-        tempo = meta_data.get("tempo", self.default_tempo)  # In BPM
+        tempo = meta_data.get("tempo", self.default_tempo)
         instrument = meta_data.get("instrument", 4)
 
         time = 0
@@ -368,6 +407,13 @@ class Piece:
         midi.addTempo(track, time, tempo)
         midi.addTrackName(track, time, name)
         midi.addProgramChange(track, channel, time, instrument)
+        midi.addTimeSignature(
+            track,
+            time,
+            numerator=self.beats_per_measure,
+            denominator=2,  # A '2' here means quarter note (4)
+            clocks_per_tick=24,
+        )
 
         def add_note(start_time, note):
             midi.addNote(
@@ -411,7 +457,7 @@ def main():
 
     print("Playing generated piece")
     play_music(filename)
-    print("thanks")
+    print("done.")
 
 
 if __name__ == "__main__":
