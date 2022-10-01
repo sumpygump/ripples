@@ -83,10 +83,23 @@ class Chord:
     duration = 4
     volume = 80
 
+    # Define note relationships within chord for each inversion
     defs = {
-        "M": [0, 4, 7],
-        "m": [0, 3, 7],
-        "d": [0, 3, 6],
+        1: {
+            "M": [0, 4, 7],
+            "m": [0, 3, 7],
+            "d": [0, 3, 6],
+        },
+        2: {
+            "M": [-8, -5, 0],
+            "m": [-9, -5, 0],
+            "d": [-9, -6, 0],
+        },
+        3: {
+            "M": [-5, 0, 4],
+            "m": [-5, 0, 3],
+            "d": [-6, 0, 3],
+        },
     }
 
     def __init__(self, root, chord_type="M", inversion=1, duration=4, volume=80):
@@ -101,11 +114,13 @@ class Chord:
 
         return tuple(
             Note(self.root + shift, duration=self.duration, volume=self.volume)
-            for shift in self.defs[self.type]
+            for shift in self.defs[self.inversion][self.type]
         )
 
     def __str__(self):
-        return "<Chord {}{}>".format(gm.note_names[self.root], self.type)
+        return "<Chord {}{} (i{})>".format(
+            gm.note_names[self.root], self.type, self.inversion
+        )
 
     def __repr__(self):
         return self.__str__()
@@ -180,8 +195,8 @@ class Piece:
         print(f"Generating melody {seed}")
         print("-" * 32)
 
-        instrument_1 = random.choice(gm.PIANO_SET)
-        instrument_2 = random.choice(gm.PAD_SET)
+        instrument_1 = random.choice(gm.ALL_LEAD_LIKE_SET)
+        instrument_2 = random.choice(gm.ALL_ACCOMPANIMENT_SET)
         print(f"Melody instrument {instrument_1}")
         print(f"Accompaniment instrument {instrument_2}")
 
@@ -220,7 +235,10 @@ class Piece:
         progression = []
         for _ in range(0, 4):
             pick = random.choices(chords, weights=chord_weights)[0]
-            progression.append((time, Chord(root + pick[0], pick[1])))
+            inversion = random.choice([1, 2, 3])
+            progression.append(
+                (time, Chord(root + pick[0], pick[1], inversion=inversion))
+            )
             time = time + 4
 
         return progression
@@ -237,7 +255,7 @@ class Piece:
         for _, chord in chords:
             this_start_time = time
             chord_note = random.choice(chord.spread())
-            pitch = chord_note.pitch
+            pitch = chord_note.pitch + 12  # An octave above
             motive = self.generate_motive(pitch, time, chord_note.duration)
             notes_data.extend(motive)
 
@@ -267,7 +285,8 @@ class Piece:
         notes_data = []
         max_time = time + length
         while time < max_time:
-            if random.choices([True, False], weights=(100, 10))[0]:
+            # A rest or a note?
+            if random.choices([True, False], weights=(100, 40))[0]:
                 note_type = "note"
             else:
                 note_type = "rest"
