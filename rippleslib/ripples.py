@@ -184,6 +184,8 @@ def get_pitches():
 class Piece:
     """Generatable piece of music"""
 
+    version = 4
+
     def __init__(self):
         self.pitches = get_pitches()
         pass
@@ -197,22 +199,35 @@ class Piece:
 
         instrument_1 = random.choice(gm.ALL_LEAD_LIKE_SET)
         instrument_2 = random.choice(gm.ALL_ACCOMPANIMENT_SET)
+        instrument_3 = random.choice(gm.BASS_SET)
         print(f"Melody instrument {instrument_1}")
         print(f"Accompaniment instrument {instrument_2}")
+        print(f"Bass instrument {instrument_3}")
 
         self.seed = seed
         random.seed(seed)
+
+        self.default_tempo = random.randint(90, 124)
+        print(f"Tempo: {self.default_tempo}")
+
         self.durations, self.dur_weights = get_durations()
+        self.bass_style = random.choice(["simple", "marco", "marching"])
+        print(f"Bass style: {self.bass_style}")
 
         chords = self.generate_chords()
         print(chords)
-        midi = create_track(
+        midi = self.create_track(
             {"instrument": instrument_2, "track": 1, "channel": 1}, chords
+        )
+
+        bass = self.generate_bass(chords)
+        midi = self.create_track(
+            {"instrument": instrument_3, "track": 2, "channel": 2}, bass, midi=midi
         )
 
         notes = self.generate_melody(chords)
         print(notes)
-        midi = create_track(
+        midi = self.create_track(
             {"instrument": instrument_1, "track": 0, "channel": 0}, notes, midi=midi
         )
 
@@ -243,12 +258,33 @@ class Piece:
 
         return progression
 
+    def generate_bass(self, chords):
+        """Generate a bass line"""
+
+        notes_data = []
+        time = 0
+        for _, chord in chords:
+            pitch = chord.root - 12
+            if self.bass_style == "marching":
+                # quarter notes
+                for _ in range(0, chord.duration):
+                    notes_data.append((time, Note(pitch, 1, 80)))
+                    time = time + 1
+            elif self.bass_style == "marco":
+                # play one note, but then a quarter note at end of measure
+                notes_data.append((time, Note(pitch, chord.duration - 1, 80)))
+                time = time + chord.duration - 1
+                notes_data.append((time, Note(pitch, 1, 80)))
+                time = time + 1
+            else:
+                # play one note per measure
+                notes_data.append((time, Note(pitch, chord.duration, 80)))
+                time = time + chord.duration
+
+        return notes_data
+
     def generate_melody(self, chords):
         """Generate a melody"""
-
-        # Starting pitch
-        index = random.randint(self.pitches.index(gm.C_3), self.pitches.index(gm.C_4))
-        pitch = self.pitches[index]
 
         notes_data = []
         time = 0
@@ -315,47 +351,46 @@ class Piece:
 
         return notes_data
 
+    def create_track(self, meta_data, notes_data, midi=None):
 
-def create_track(meta_data, notes_data, midi=None):
+        if midi is None:
+            track_count = 4
+            midi = MIDIFile(track_count)
 
-    if midi is None:
-        track_count = 4
-        midi = MIDIFile(track_count)
+        track = meta_data.get("track", 0)
+        channel = meta_data.get("channel", 0)
+        name = meta_data.get("name", "Melody")
+        tempo = meta_data.get("tempo", self.default_tempo)  # In BPM
+        instrument = meta_data.get("instrument", 4)
 
-    track = meta_data.get("track", 0)
-    channel = meta_data.get("channel", 0)
-    name = meta_data.get("name", "Melody")
-    tempo = meta_data.get("tempo", 120)  # In BPM
-    instrument = meta_data.get("instrument", 4)
+        time = 0
 
-    time = 0
+        midi.addTempo(track, time, tempo)
+        midi.addTrackName(track, time, name)
+        midi.addProgramChange(track, channel, time, instrument)
 
-    midi.addTempo(track, time, tempo)
-    midi.addTrackName(track, time, name)
-    midi.addProgramChange(track, channel, time, instrument)
+        def add_note(start_time, note):
+            midi.addNote(
+                track,
+                channel,
+                note.pitch,
+                start_time,
+                note.duration - random.choice([0, 0.01, 0.02]),
+                note.volume,
+            )
 
-    def add_note(start_time, note):
-        midi.addNote(
-            track,
-            channel,
-            note.pitch,
-            start_time,
-            note.duration - random.choice([0, 0.01, 0.02]),
-            note.volume,
-        )
+        for note_time, item in notes_data:
+            if isinstance(item, Rest):
+                # Do nothing, just go to the next time
+                pass
+            elif isinstance(item, Note):
+                add_note(note_time, item)
+            elif isinstance(item, Chord):
+                notes = item.spread()
+                for note in notes:
+                    add_note(note_time, note)
 
-    for note_time, item in notes_data:
-        if isinstance(item, Rest):
-            # Do nothing, just go to the next time
-            pass
-        elif isinstance(item, Note):
-            add_note(note_time, item)
-        elif isinstance(item, Chord):
-            notes = item.spread()
-            for note in notes:
-                add_note(note_time, note)
-
-    return midi
+        return midi
 
 
 def main():
@@ -369,7 +404,7 @@ def main():
     piece = Piece()
     midi = piece.generate(seed)
 
-    filename = "piece-00.mid"
+    filename = f"song-v{Piece.version}-{seed}.mid"
 
     with open(filename, "wb") as output_file:
         midi.writeFile(output_file)
