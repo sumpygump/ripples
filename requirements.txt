@@ -1,3 +1,5 @@
-black
-pylint
-pygame
+black==22.8.0
+pylint==2.15.3
+pygame==2.1.2
+MIDIUtil==1.2.1
+rich==12.5.1
