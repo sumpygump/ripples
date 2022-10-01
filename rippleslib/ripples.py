@@ -23,7 +23,15 @@ class Note:
     # How loud it is; 0-127 per MIDI spec
     volume = 100
 
-    dur_symbols = {4: "whole", 2: "half", 1: "quarter", 0.5: "8th", 0.25: "16th"}
+    dur_symbols = {
+        4: "whole",
+        2: "half",
+        1.5: "quarter dot",
+        1: "quarter",
+        0.75: "8th dot",
+        0.5: "8th",
+        0.25: "16th",
+    }
 
     def __init__(self, pitch, duration=1, volume=100):
         self.pitch = pitch
@@ -31,9 +39,36 @@ class Note:
         self.volume = volume
 
     def __str__(self):
+        if self.duration in self.dur_symbols:
+            dur_symbol = self.dur_symbols[self.duration]
+        else:
+            dur_symbol = "tied note"
+
         return "<Note {} {} {}>".format(
-            gm.note_names[self.pitch], self.dur_symbols[self.duration], self.volume
+            gm.note_names[self.pitch], dur_symbol, self.volume
         )
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class Rest:
+    """Represents a rest"""
+
+    pitch = None
+    duration = 1
+    volume = None
+
+    def __init__(self, duration=1):
+        self.duration = duration
+
+    def __str__(self):
+        if self.duration in Note.dur_symbols:
+            dur_symbol = Note.dur_symbols[self.duration]
+        else:
+            dur_symbol = "tied rest"
+
+        return "<Rest {}>".format(dur_symbol)
 
     def __repr__(self):
         return self.__str__()
@@ -64,7 +99,7 @@ class Chord:
     def spread(self):
         """Split chord into individual notes"""
 
-        return (
+        return tuple(
             Note(self.root + shift, duration=self.duration, volume=self.volume)
             for shift in self.defs[self.type]
         )
@@ -76,107 +111,190 @@ class Chord:
         return self.__str__()
 
 
-def generate_piece(seed):
-
-    print("-" * 32)
-    print(f"Generating melody {seed}")
-    print("-" * 32)
-
-    instrument_1 = random.choice(gm.PIANO_SET)
-    instrument_2 = random.choice(gm.PAD_SET)
-    print(f"Melody instrument {instrument_1}")
-    print(f"Accompaniment instrument {instrument_2}")
-
-    random.seed(seed)
-
-    notes = generate_melody()
-    print(notes)
-    midi = create_track({"instrument": instrument_1, "track": 0, "channel": 0}, notes)
-
-    chords = generate_chords()
-    print(chords)
-    midi = create_track(
-        {"instrument": instrument_2, "track": 1, "channel": 1}, chords, midi=midi
-    )
-
-    # notes = generate_melody()
-    # midi = create_track(
-    # {"instrument": gm.MELODIC_TOM, "track": 1, "channel": 1}, notes, midi=midi
-    # )
-
-    random.seed(None)
-
-    return midi
-
-
-def generate_chords():
-    """Generate a chord progression"""
-
-    root = 48
-
-    # 0 1 2 3 4 5 6 7 8 9 10 11 12
-    # C | D | E F | G | A  |  B  C
-
-    chords = [(0, "M"), (2, "m"), (4, "m"), (5, "M"), (7, "M"), (9, "m"), (11, "d")]
-
-    time = 0
-    progression = []
-    for _ in range(0, 4):
-        pick = random.choice(chords)
-        progression.append((time, Chord(root + pick[0], pick[1])))
-        time = time + 4
-
-    return progression
-
-
-def generate_melody():
-    """Generate a notes_data"""
-
-    duration = 1  # In beats
-    volume = 100  # 0-127, as per the MIDI standard
+def get_durations():
+    """Get list of possible note durations and weights"""
 
     durations = [
         4,  # whole
         2,  # half
+        1 + 1 / 2,  # dotted quarter
         1,  # quarter
-        1 / 2,  # eighth
-        1 / 4,  # sixteenth
+        1 / 2 + 1 / 4,  # dotted 8th
+        1 / 2,  # 8th
+        1 / 4,  # 16th
     ]
-    dur_weights = (5, 10, 50, 50, 20)
+    possible_weights = [
+        (5, 10, 5, 50, 10, 50, 20),
+        (80, 80, 10, 10, 10, 10, 10),
+        (5, 5, 10, 10, 10, 80, 80),
+    ]
+    dur_weights = random.choice(possible_weights)
+    print("weight_profile", dur_weights)
+
+    return durations, dur_weights
+
+
+def gen_duration(durations, dur_weights):
+    """Generator for durations"""
+
+    duration = random.choices(durations, weights=dur_weights)[0]
+
+    if duration in [0.5, 0.25] and len(gen_duration.buffer) == 0:
+        # If it was a 8th or 16th note, then make it be a group of 2 to 4 of them
+        if random.choice([True, False]):
+            gen_duration.buffer = [duration, duration, duration, duration]
+        else:
+            gen_duration.buffer = [duration, duration]
+
+    if len(gen_duration.buffer) > 0:
+        yield gen_duration.buffer.pop()
+    else:
+        yield duration
+
+
+gen_duration.buffer = []
+
+
+def get_pitches():
+    """Get list of all pitches in the key"""
 
     key_template = [0, 2, 4, 5, 7, 9, 11]
     pitches = []
-    for octave in range(0, 7 * 12 + 1, 12):
-        pitches.extend([octave + n for n in key_template])
-    interval_deltas = [0, 1, 2, 3, 4, 5, 6, 7]
-    iv_weights = (90, 50, 50, 5, 5, 5, 5, 10)
+    for octave_note in range(0, 7 * 12 + 1, 12):
+        pitches.extend([octave_note + n for n in key_template])
 
-    notes_data = []
+    return pitches
 
-    # Starting pitch
-    index = random.randint(pitches.index(gm.C_3), pitches.index(gm.C_4))
-    pitch = pitches[index]
-    min_pitch = gm.C_2
-    max_pitch = gm.C_5
 
-    time = 0
-    while time <= 17:
-        interval = random.choices(interval_deltas, weights=iv_weights)[0]
-        if random.choice([True, False]):
-            pitch = pitches[index + interval]
-            if pitch > max_pitch:
-                pitch = pitch - 12
-        else:
-            pitch = pitches[index - interval]
-            if pitch < min_pitch:
-                pitch = pitch + 12
+class Piece:
+    """Generatable piece of music"""
 
-        duration = random.choices(durations, weights=dur_weights)[0]
+    def __init__(self):
+        self.pitches = get_pitches()
+        pass
 
-        notes_data.append((time, Note(pitch, duration, volume)))
-        time = time + duration
+    def generate(self, seed):
+        """Generate the entire song (piece)"""
 
-    return notes_data
+        print("-" * 32)
+        print(f"Generating melody {seed}")
+        print("-" * 32)
+
+        instrument_1 = random.choice(gm.PIANO_SET)
+        instrument_2 = random.choice(gm.PAD_SET)
+        print(f"Melody instrument {instrument_1}")
+        print(f"Accompaniment instrument {instrument_2}")
+
+        self.seed = seed
+        random.seed(seed)
+        self.durations, self.dur_weights = get_durations()
+
+        chords = self.generate_chords()
+        print(chords)
+        midi = create_track(
+            {"instrument": instrument_2, "track": 1, "channel": 1}, chords
+        )
+
+        notes = self.generate_melody(chords)
+        print(notes)
+        midi = create_track(
+            {"instrument": instrument_1, "track": 0, "channel": 0}, notes, midi=midi
+        )
+
+        random.seed(None)
+
+        return midi
+
+    def generate_chords(self):
+        """Generate a chord progression"""
+
+        root = 48
+
+        # 0 1 2 3 4 5 6 7 8 9 10 11 12
+        # C | D | E F | G | A |  B  C
+
+        chords = [(0, "M"), (2, "m"), (4, "m"), (5, "M"), (7, "M"), (9, "m"), (11, "d")]
+        chord_weights = [50, 30, 30, 50, 50, 30, 1]
+
+        time = 0
+        progression = []
+        for _ in range(0, 4):
+            pick = random.choices(chords, weights=chord_weights)[0]
+            progression.append((time, Chord(root + pick[0], pick[1])))
+            time = time + 4
+
+        return progression
+
+    def generate_melody(self, chords):
+        """Generate a melody"""
+
+        # Starting pitch
+        index = random.randint(self.pitches.index(gm.C_3), self.pitches.index(gm.C_4))
+        pitch = self.pitches[index]
+
+        notes_data = []
+        time = 0
+        for _, chord in chords:
+            this_start_time = time
+            chord_note = random.choice(chord.spread())
+            pitch = chord_note.pitch
+            motive = self.generate_motive(pitch, time, chord_note.duration)
+            notes_data.extend(motive)
+
+            # Cut off last note to end at the measure
+            last_note = notes_data[-1]
+            time = last_note[0] + last_note[1].duration
+            if time > this_start_time + chord_note.duration:
+                last_note[1].duration = chord_note.duration - (
+                    last_note[0] - this_start_time
+                )
+                time = this_start_time + chord_note.duration
+
+        return notes_data
+
+    def generate_motive(self, root, time=0, length=4):
+        """Generate a little motive around a root note"""
+
+        volume = 100
+        interval_deltas = [0, 1, 2, 3, 4, 5, 6, 7]
+        iv_weights = (90, 50, 50, 5, 5, 5, 5, 10)
+        min_pitch = gm.C_2
+        max_pitch = gm.C_5
+
+        index = self.pitches.index(root)
+        pitch = root
+
+        notes_data = []
+        max_time = time + length
+        while time < max_time:
+            if random.choices([True, False], weights=(100, 10))[0]:
+                note_type = "note"
+            else:
+                note_type = "rest"
+
+            if note_type == "note":
+                # Choose a new pitch
+                interval = random.choices(interval_deltas, weights=iv_weights)[0]
+                if random.choice([True, False]):
+                    pitch = self.pitches[index + interval]
+                    if pitch > max_pitch:
+                        pitch = pitch - 12
+                else:
+                    pitch = self.pitches[index - interval]
+                    if pitch < min_pitch:
+                        pitch = pitch + 12
+
+            # Choose a duration
+            duration = next(gen_duration(self.durations, self.dur_weights))
+
+            # Add to list of notes
+            if note_type == "note":
+                notes_data.append((time, Note(pitch, duration, volume)))
+            else:
+                notes_data.append((time, Rest(duration)))
+            time = time + duration
+
+        return notes_data
 
 
 def create_track(meta_data, notes_data, midi=None):
@@ -203,12 +321,15 @@ def create_track(meta_data, notes_data, midi=None):
             channel,
             note.pitch,
             start_time,
-            note.duration - random.choice([0, 0.1, 0.2]),
+            note.duration - random.choice([0, 0.01, 0.02]),
             note.volume,
         )
 
     for note_time, item in notes_data:
-        if isinstance(item, Note):
+        if isinstance(item, Rest):
+            # Do nothing, just go to the next time
+            pass
+        elif isinstance(item, Note):
             add_note(note_time, item)
         elif isinstance(item, Chord):
             notes = item.spread()
@@ -226,7 +347,8 @@ def main():
     else:
         seed = str(random.randint(0, 65535))
 
-    midi = generate_piece(seed)
+    piece = Piece()
+    midi = piece.generate(seed)
 
     filename = "piece-00.mid"
 

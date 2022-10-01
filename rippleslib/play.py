@@ -31,7 +31,7 @@ def play_music(midi_filename):
         raise SystemExit from e
 
     # Just some extra time before ending to let tails end
-    for _ in range(32):
+    for _ in range(8):
         clock.tick(30)
 
 
