@@ -193,7 +193,7 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 5
+    version = 6
 
     def __init__(self):
         self.pitches = get_pitches()
@@ -227,31 +227,61 @@ class Piece:
         self.bass_style = random.choice(["simple", "marco", "marching"])
         print(f"Bass style: {self.bass_style}")
 
-        chords = self.generate_chords()
-        print(chords)
+        structure = self.generate_structure()
+
         midi = self.create_track(
-            {"instrument": instrument_2, "track": 1, "channel": 1}, chords
+            {"instrument": instrument_2, "track": 1, "channel": 1}, structure["chords"]
         )
 
-        bass = self.generate_bass(chords)
         midi = self.create_track(
-            {"instrument": instrument_3, "track": 2, "channel": 2}, bass, midi=midi
+            {"instrument": instrument_3, "track": 2, "channel": 2},
+            structure["bass"],
+            midi=midi,
         )
 
-        notes = self.generate_melody(chords)
-        # print(notes)
         midi = self.create_track(
-            {"instrument": instrument_1, "track": 0, "channel": 0}, notes, midi=midi
+            {"instrument": instrument_1, "track": 0, "channel": 0},
+            structure["melody"],
+            midi=midi,
         )
 
         random.seed(None)
 
         return midi
 
+    def generate_structure(self):
+        """Plan out a structure for the song"""
+
+        possible_sections = "abc"
+
+        sections = {}
+        for label in possible_sections:
+            sections[label] = {}
+
+            measures = random.choice([2, 4, 6, 8])
+            chords = self.generate_chords(measures)
+            sections[label]["chords"] = chords
+            sections[label]["bass"] = self.generate_bass(chords)
+            sections[label]["melody"] = self.generate_melody(chords)
+
+        pattern = ["a"]  # Start with section a
+        for _ in range(random.randint(1, 5)):
+            pattern.append(random.choice(possible_sections))
+        print("Pattern: {}".format("".join(pattern)))
+
+        structure = {"chords": [], "bass": [], "melody": []}
+        for label in pattern:
+            print(f"Section {label}", sections[label]["chords"])
+            structure["chords"].extend(sections[label]["chords"])
+            structure["bass"].extend(sections[label]["bass"])
+            structure["melody"].extend(sections[label]["melody"])
+
+        return structure
+
     def generate_chords(self, measures=4):
         """Generate a chord progression"""
 
-        root = 48
+        root = gm.C_2
 
         # 0 1 2 3 4 5 6 7 8 9 10 11 12
         # C | D | E F | G | A |  B  C
@@ -267,21 +297,18 @@ class Piece:
             root_shift, type_ = pick
 
             # Pick whether to turn into a 7th chord
-            if random.choice([True, False]):
+            if random.choices([True, False], weights=(20, 80))[0]:
                 type_ = "{}{}".format(type_, "7")
 
             # Pick an inversion of the chord to use
             inversion = random.choice([1, 2, 3])
 
             progression.append(
-                (
-                    time,
-                    Chord(
-                        root + root_shift,
-                        type_,
-                        duration=self.beats_per_measure,
-                        inversion=inversion,
-                    ),
+                Chord(
+                    root + root_shift,
+                    type_,
+                    duration=self.beats_per_measure,
+                    inversion=inversion,
                 )
             )
             time = time + self.beats_per_measure
@@ -293,22 +320,22 @@ class Piece:
 
         notes_data = []
         time = 0
-        for _, chord in chords:
+        for chord in chords:
             pitch = chord.root - 12
             if self.bass_style == "marching":
                 # quarter notes
                 for _ in range(0, chord.duration):
-                    notes_data.append((time, Note(pitch, 1, 80)))
+                    notes_data.append(Note(pitch, 1, 80))
                     time = time + 1
             elif self.bass_style == "marco":
                 # play one note, but then a quarter note at end of measure
-                notes_data.append((time, Note(pitch, chord.duration - 1, 80)))
+                notes_data.append(Note(pitch, chord.duration - 1, 80))
                 time = time + chord.duration - 1
-                notes_data.append((time, Note(pitch, 1, 80)))
+                notes_data.append(Note(pitch, 1, 80))
                 time = time + 1
             else:
                 # play one note per measure
-                notes_data.append((time, Note(pitch, chord.duration, 80)))
+                notes_data.append(Note(pitch, chord.duration, 80))
                 time = time + chord.duration
 
         return notes_data
@@ -317,28 +344,22 @@ class Piece:
         """Generate a melody"""
 
         notes_data = []
-        time = 0
-        for _, chord in chords:
-            this_start_time = time
+        for chord in chords:
             chord_note = random.choice(chord.spread())
-            # print("chord", chord)
-            # print("chord_note", chord_note)
             pitch = chord_note.pitch + 12  # An octave above
-            motive = self.generate_motive(pitch, time, chord_note.duration)
-            notes_data.extend(motive)
+            motive = self.generate_motive(pitch, chord_note.duration)
 
-            # Cut off last note to end at the measure
-            last_note = notes_data[-1]
-            time = last_note[0] + last_note[1].duration
-            if time > this_start_time + chord_note.duration:
-                last_note[1].duration = chord_note.duration - (
-                    last_note[0] - this_start_time
-                )
-                time = this_start_time + chord_note.duration
+            motive_duration = sum(n.duration for n in motive)
+            if motive_duration > chord_note.duration:
+                # Cut off last note to end at the measure
+                up_to_last = sum(n.duration for n in motive[0:-1])
+                motive[-1].duration = chord_note.duration - up_to_last
+
+            notes_data.extend(motive)
 
         return notes_data
 
-    def generate_motive(self, root, time=0, length=4):
+    def generate_motive(self, root, length=4):
         """Generate a little motive around a root note"""
 
         volume = 100
@@ -356,8 +377,8 @@ class Piece:
             index = self.pitches.index(root)
 
         pitch = root
-
         notes_data = []
+        time = 0
         max_time = time + length
         while time < max_time:
             # A rest or a note?
@@ -383,9 +404,9 @@ class Piece:
 
             # Add to list of notes
             if note_type == "note":
-                notes_data.append((time, Note(pitch, duration, volume)))
+                notes_data.append(Note(pitch, duration, volume))
             else:
-                notes_data.append((time, Rest(duration)))
+                notes_data.append(Rest(duration))
             time = time + duration
 
         return notes_data
@@ -415,26 +436,30 @@ class Piece:
             clocks_per_tick=24,
         )
 
-        def add_note(start_time, note):
+        def add_note(onset_time, note):
             midi.addNote(
                 track,
                 channel,
                 note.pitch,
-                start_time,
+                onset_time,
                 note.duration - random.choice([0, 0.01, 0.02]),
                 note.volume,
             )
 
-        for note_time, item in notes_data:
+        onset_time = 0
+        for item in notes_data:
             if isinstance(item, Rest):
                 # Do nothing, just go to the next time
                 pass
             elif isinstance(item, Note):
-                add_note(note_time, item)
+                add_note(onset_time, item)
             elif isinstance(item, Chord):
                 notes = item.spread()
                 for note in notes:
-                    add_note(note_time, note)
+                    add_note(onset_time, note)
+
+            # Calculate when the next note/rest should start
+            onset_time = onset_time + item.duration
 
         return midi
 
