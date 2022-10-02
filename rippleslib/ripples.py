@@ -77,7 +77,7 @@ class Rest:
 class Chord:
     """Represents a chord"""
 
-    root = 48
+    root = gm.C_2
     type = "M"
     inversion = 1
     duration = 4
@@ -117,14 +117,29 @@ class Chord:
         self.inversion = inversion
         self.duration = duration
         self.volume = volume
+        self.pitches = get_pitches()
 
     def spread(self):
         """Split chord into individual notes"""
 
-        return tuple(
+        notes = tuple(
             Note(self.root + shift, duration=self.duration, volume=self.volume)
             for shift in self.defs[self.inversion][self.type]
         )
+
+        enforce_range = [gm.A_2, gm.D_4]
+
+        for note in notes:
+            if note.pitch not in self.pitches:
+                # TODO: find a better way to fix this. This happens because
+                # depending on the key, the natural 7th will pick the wrong note
+                note.pitch = note.pitch - 1
+            if note.pitch < enforce_range[0]:
+                note.pitch += 12
+            if note.pitch > enforce_range[1]:
+                note.pitch -= 12
+
+        return notes
 
     def __str__(self):
         return "<Chord {}{} (i{})>".format(
@@ -193,7 +208,7 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 6
+    version = 7
 
     def __init__(self):
         self.pitches = get_pitches()
@@ -258,14 +273,16 @@ class Piece:
         for label in possible_sections:
             sections[label] = {}
 
-            measures = random.choice([2, 4, 6, 8])
+            measures = random.choice([2, 3, 4, 8])
             chords = self.generate_chords(measures)
+            if measures < 5:
+                chords = chords + chords  # Double it up, but we'll get different melody
             sections[label]["chords"] = chords
             sections[label]["bass"] = self.generate_bass(chords)
             sections[label]["melody"] = self.generate_melody(chords)
 
         pattern = ["a"]  # Start with section a
-        for _ in range(random.randint(1, 5)):
+        for _ in range(random.randint(2, 6)):
             pattern.append(random.choice(possible_sections))
         print("Pattern: {}".format("".join(pattern)))
 
@@ -275,6 +292,19 @@ class Piece:
             structure["chords"].extend(sections[label]["chords"])
             structure["bass"].extend(sections[label]["bass"])
             structure["melody"].extend(sections[label]["melody"])
+
+        # Ending
+        chord = Chord(gm.C_2, "M", duration=self.beats_per_measure)
+        structure["chords"].append(chord)
+        structure["bass"].append(Note(gm.C_2 - 12, duration=1, volume=80))
+        structure["melody"].append(
+            Note(
+                random.choice(chord.spread()).pitch,
+                duration=self.beats_per_measure,
+                volume=100,
+            )
+        )
+        print("Ending", chord)
 
         return structure
 
