@@ -7,8 +7,8 @@ import random
 from midiutil import MIDIFile
 from rich import print
 
-from play import play_music
 import gm
+from play import play_music
 
 
 class Note:
@@ -34,18 +34,28 @@ class Note:
     }
 
     def __init__(self, pitch, duration=1, volume=100):
+        pitch = max(pitch, 0)
+        pitch = min(pitch, 127)
         self.pitch = pitch
         self.duration = duration
         self.volume = volume
+
+    @property
+    def name(self):
+        return gm.NOTE_NAMES[self.pitch]
+
+    @property
+    def note_class(self):
+        return gm.NOTE_CLASS[self.pitch]
 
     def __str__(self):
         if self.duration in self.dur_symbols:
             dur_symbol = self.dur_symbols[self.duration]
         else:
-            dur_symbol = "tied note"
+            dur_symbol = f"tie dur:{self.duration}"
 
         return "<Note {} {} {}>".format(
-            gm.note_names[self.pitch], dur_symbol, self.volume
+            gm.NOTE_NAMES[self.pitch], dur_symbol, self.volume
         )
 
     def __repr__(self):
@@ -66,7 +76,7 @@ class Rest:
         if self.duration in Note.dur_symbols:
             dur_symbol = Note.dur_symbols[self.duration]
         else:
-            dur_symbol = "tied rest"
+            dur_symbol = f"tie dur:{self.duration}"
 
         return "<Rest {}>".format(dur_symbol)
 
@@ -77,74 +87,67 @@ class Rest:
 class Chord:
     """Represents a chord"""
 
-    root = gm.C_2
-    type = "M"
+    root = gm.NOTE_NUMS["C_2"]
+    quality = "M"
     inversion = 1
     duration = 4
     volume = 80
 
-    # Define note relationships within chord for each inversion
+    # Define note relationships within each chord quality
     defs = {
-        1: {
-            "M": [0, 4, 7],
-            "m": [0, 3, 7],
-            "d": [0, 3, 6],
-            "M7": [0, 4, 7, 11],
-            "m7": [0, 3, 7, 11],
-            "d7": [0, 3, 6],
-        },
-        2: {
-            "M": [-8, -5, 0],
-            "m": [-9, -5, 0],
-            "d": [-9, -6, 0],
-            "M7": [-8, -5, 0, -1],
-            "m7": [-9, -5, 0, -1],
-            "d7": [-9, -6, 0],
-        },
-        3: {
-            "M": [-5, 0, 4],
-            "m": [-5, 0, 3],
-            "d": [-6, 0, 3],
-            "M7": [-5, 0, 4, -1],
-            "m7": [-5, 0, 3, -1],
-            "d7": [-6, 0, 3],
-        },
+        "M": [0, 4, 7],
+        "m": [0, 3, 7],
+        "d": [0, 3, 6],
+        "M7": [0, 4, 7, 10],
+        "Mmaj7": [0, 4, 7, 11],
+        "m7": [0, 3, 7, 10],
+        "mmaj7": [0, 3, 7, 11],
+        "d7": [0, 3, 6, 9],
+        "dmin7dim5": [0, 3, 6, 10],
+        "M7dim5": [0, 4, 6, 10],
     }
 
-    def __init__(self, root, chord_type="M", inversion=1, duration=4, volume=80):
+    def __init__(self, root, quality="M", inversion=0, duration=4, volume=80):
         self.root = root
-        self.type = chord_type
+        self.quality = quality
         self.inversion = inversion
         self.duration = duration
         self.volume = volume
         self.pitches = get_pitches()
 
-    def spread(self):
+    @property
+    def name(self):
+        return "{}{}".format(gm.NOTE_CLASS[self.root], self.quality)
+
+    def spread(self, clamp=False, clamp_range=None):
         """Split chord into individual notes"""
 
         notes = tuple(
             Note(self.root + shift, duration=self.duration, volume=self.volume)
-            for shift in self.defs[self.inversion][self.type]
+            for shift in self.defs[self.quality]
         )
 
-        enforce_range = [gm.A_2, gm.D_4]
+        if clamp_range is None:
+            clamp_range = [gm.NOTE_NUMS["A_1"], gm.NOTE_NUMS["D_3"]]
+
+        if self.inversion == 1:
+            notes[0].pitch += 12
+
+        if self.inversion == 2:
+            notes[0].pitch += 12
+            notes[1].pitch += 12
 
         for note in notes:
-            if note.pitch not in self.pitches:
-                # TODO: find a better way to fix this. This happens because
-                # depending on the key, the natural 7th will pick the wrong note
-                note.pitch = note.pitch - 1
-            if note.pitch < enforce_range[0]:
-                note.pitch += 12
-            if note.pitch > enforce_range[1]:
-                note.pitch -= 12
+            if clamp:
+                if note.pitch < clamp_range[0]:
+                    note.pitch += 12
+                if note.pitch > clamp_range[1]:
+                    note.pitch -= 12
 
         return notes
 
     def __str__(self):
-        return "<Chord {}{} (i{})>".format(
-            gm.note_names[self.root], self.type, self.inversion
-        )
+        return "<Chord {} (i{})>".format(self.name, self.inversion)
 
     def __repr__(self):
         return self.__str__()
@@ -208,7 +211,7 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 7
+    version = 8
 
     def __init__(self):
         self.pitches = get_pitches()
@@ -294,9 +297,9 @@ class Piece:
             structure["melody"].extend(sections[label]["melody"])
 
         # Ending
-        chord = Chord(gm.C_2, "M", duration=self.beats_per_measure)
+        chord = Chord(gm.NOTE_NUMS["C_2"], "M", duration=self.beats_per_measure)
         structure["chords"].append(chord)
-        structure["bass"].append(Note(gm.C_2 - 12, duration=1, volume=80))
+        structure["bass"].append(Note(gm.NOTE_NUMS["C_2"] - 12, duration=1, volume=80))
         structure["melody"].append(
             Note(
                 random.choice(chord.spread()).pitch,
@@ -311,39 +314,53 @@ class Piece:
     def generate_chords(self, measures=4):
         """Generate a chord progression"""
 
-        root = gm.C_2
+        root = gm.NOTE_NUMS["C_2"]
 
         # 0 1 2 3 4 5 6 7 8 9 10 11 12
         # C | D | E F | G | A |  B  C
 
-        chords = [(0, "M"), (2, "m"), (4, "m"), (5, "M"), (7, "M"), (9, "m"), (11, "d")]
+        chord_choices = [
+            (0, "M"),
+            (2, "m"),
+            (4, "m"),
+            (5, "M"),
+            (7, "M"),
+            (9, "m"),
+            (11, "d"),
+        ]
         chord_weights = [50, 30, 30, 50, 50, 30, 1]
 
         time = 0
-        progression = []
+        chords = []
         for _ in range(0, measures):
             # Pick which chord from the scale to use
-            pick = random.choices(chords, weights=chord_weights)[0]
-            root_shift, type_ = pick
+            pick = random.choices(chord_choices, weights=chord_weights)[0]
+            root_shift, quality = pick
 
             # Pick whether to turn into a 7th chord
             if random.choices([True, False], weights=(20, 80))[0]:
-                type_ = "{}{}".format(type_, "7")
+                if quality == "M" and root_shift != 7:
+                    suffix = "maj7"
+                elif quality == "d":
+                    suffix = "min7dim5"  # To keep it in the key
+                else:
+                    suffix = "7"
+                quality = "{}{}".format(quality, suffix)
 
             # Pick an inversion of the chord to use
-            inversion = random.choice([1, 2, 3])
+            inversion = random.choice([0, 1, 2])
 
-            progression.append(
+            chords.append(
                 Chord(
                     root + root_shift,
-                    type_,
+                    quality,
                     duration=self.beats_per_measure,
                     inversion=inversion,
                 )
             )
             time = time + self.beats_per_measure
 
-        return progression
+        return chords
 
     def generate_bass(self, chords):
         """Generate a bass line"""
@@ -395,8 +412,8 @@ class Piece:
         volume = 100
         interval_deltas = [0, 1, 2, 3, 4, 5]
         iv_weights = (90, 50, 50, 5, 5, 10)
-        min_pitch = gm.C_2
-        max_pitch = gm.C_5
+        min_pitch = gm.NOTE_NUMS["C_2"]
+        max_pitch = gm.NOTE_NUMS["C_5"]
 
         try:
             index = self.pitches.index(root)
@@ -484,7 +501,7 @@ class Piece:
             elif isinstance(item, Note):
                 add_note(onset_time, item)
             elif isinstance(item, Chord):
-                notes = item.spread()
+                notes = item.spread(clamp=True)
                 for note in notes:
                     add_note(onset_time, note)
 

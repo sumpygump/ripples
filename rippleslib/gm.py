@@ -1,28 +1,31 @@
-"""Definition of midi instruments"""
+"""General MIDI Constants"""
 
-# List of GM programs (instruments), as outlined in General MIDI
-# https://en.wikipedia.org/wiki/General_MIDI
+# --------------------------------------------------------------
+# General MIDI Note Numbers / Note Names
+# --------------------------------------------------------------
 
 # Names of the midi note numbers for values 0-127
-# E.g. `note_names[60] => "C_3"`
+# E.g. `NOTE_NAMES[60] => "C_3"`
+# E.g. `NOTE_CLASS[60] => "C"` # Note class is the note name without the octave
 note_template = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-note_names = []
+NOTE_NAMES = []
+NOTE_CLASS = []
 for octave in range(-2, 9):
-    note_names.extend([f"{n}_{octave}" for n in note_template])
+    NOTE_CLASS.extend(list(note_template))
+    NOTE_NAMES.extend([f"{n}_{octave}" for n in note_template])
 
-# The C constants
-C_0 = 24
-C_1 = 36
-C_2 = 48
-C_3 = 60
-C_4 = 72
-C_5 = 84
-C_6 = 96
-C_7 = 108
-C_8 = 120
+# Midi note numbers for the names
+# E.g. `NOTE_NUMS["C_3"] => 60`
+NOTE_NUMS = {}
+for value, name in enumerate(NOTE_NAMES):
+    NOTE_NUMS[name] = value
 
-A_2 = 57
-D_4 = 74
+# --------------------------------------------------------------
+# General MIDI Instruments / Programs
+# --------------------------------------------------------------
+# List of GM programs (instruments), as outlined in General MIDI
+# https://en.wikipedia.org/wiki/General_MIDI
+# --------------------------------------------------------------
 
 # Piano
 ACOUSTIC_GRAND_PIANO = 0

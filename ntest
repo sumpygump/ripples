@@ -1,0 +1,29 @@
+#!/bin/bash
+# Run tests
+
+# Example usage:
+# Will run all tests:
+# ./ntest
+
+# Will serve the http coverage report
+# ./ntest --serve
+
+if [ -z $1 ]; then
+    ARG=
+else
+    ARG=$@
+fi
+
+if [ "$ARG" == "--serve" ]; then
+    echo "Serving coverage report at http://localhost:8020"
+    #open "http://localhost:8020"
+    cd htmlcov && python -m http.server 8020
+    exit 0
+fi
+
+echo coverage run -m unittest $ARG
+coverage run -m unittest $ARG
+
+echo "Generating coverage report..."
+coverage html
+echo "done."

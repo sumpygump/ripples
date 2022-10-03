@@ -12,6 +12,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+Note: Using `pip install -r requirements-dev.txt` would be used if you want to
+run the unit tests.
+
 ## Usage
 
 To run, issue this command from the terminal:
