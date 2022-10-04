@@ -1,9 +1,11 @@
 """Unit tests for ripples lib"""
 
+import random
 import sys
 from os.path import dirname, realpath
 
 import unittest
+from unittest.mock import patch
 
 # Gotta do this nonsense to force the rippleslib to find its modules during testing
 sys.path.append(dirname(dirname(realpath(__file__))) + "/rippleslib")
@@ -115,6 +117,47 @@ class TestRipples(unittest.TestCase):
         chord = ripples.Chord(60, inversion=2)
         spread = chord.spread(clamp=True)
         self.assertEqual(["C_3", "E_3", "G_2"], [n.name for n in spread])
+
+    def test_get_durations(self):
+        # Deterministic which one will be picked
+        random.seed("111")
+        profile = ripples.NoteDurationStrategy.select_duration_profile()
+        random.seed(None)
+
+        self.assertEqual("balanced", profile)
+
+    def test_gen_duration(self):
+        # Deterministic which one will be picked
+        random.seed("111")
+        ripples.NoteDurationStrategy.select_duration_profile()
+
+        value = next(ripples.gen_duration())
+        self.assertEqual(0.25, value)
+
+        # Next one should be a 16th note too
+        value = next(ripples.gen_duration())
+        self.assertEqual(0.25, value)
+
+        # And the next one should be a 16th note too
+        value = next(ripples.gen_duration())
+        self.assertEqual(0.25, value)
+
+        # ...and the next one should be a 16th note too
+        value = next(ripples.gen_duration())
+        self.assertEqual(0.25, value)
+
+        # This one is a half-note
+        value = next(ripples.gen_duration())
+        self.assertEqual(2, value)
+        random.seed(None)
+
+    @patch("ripples.print")
+    def test_generate_piece(self, mock_print):
+        mock_print.return_value = None
+        piece = ripples.Piece()
+        result = piece.generate("222")
+
+        print(result)
 
 
 if __name__ == "__main__":

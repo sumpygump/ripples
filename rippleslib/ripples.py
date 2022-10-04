@@ -5,10 +5,12 @@ import sys
 import random
 
 from midiutil import MIDIFile
-from rich import print
 
 import gm
 from play import play_music
+
+MIN_TEMPO = 90
+MAX_TEMPO = 124
 
 
 class Note:
@@ -98,6 +100,8 @@ class Chord:
         "M": [0, 4, 7],
         "m": [0, 3, 7],
         "d": [0, 3, 6],
+        "sus2": [0, 2, 7],
+        "sus4": [0, 5, 7],
         "M7": [0, 4, 7, 10],
         "Mmaj7": [0, 4, 7, 11],
         "m7": [0, 3, 7, 10],
@@ -105,6 +109,8 @@ class Chord:
         "d7": [0, 3, 6, 9],
         "dmin7dim5": [0, 3, 6, 10],
         "M7dim5": [0, 4, 6, 10],
+        "7sus2": [0, 2, 7, 10],
+        "7sus4": [0, 5, 7, 10],
     }
 
     def __init__(self, root, quality="M", inversion=0, duration=4, volume=80):
@@ -153,8 +159,8 @@ class Chord:
         return self.__str__()
 
 
-def get_durations():
-    """Get list of possible note durations and weights"""
+class NoteDurationStrategy:
+    """Strategy (choices and weights) for probability of note durations"""
 
     durations = [
         4,  # whole
@@ -165,20 +171,35 @@ def get_durations():
         1 / 2,  # 8th
         1 / 4,  # 16th
     ]
-    possible_weights = [
-        (5, 10, 5, 50, 10, 50, 20),
-        (80, 80, 10, 10, 10, 10, 10),
-        (5, 5, 10, 10, 10, 80, 80),
-    ]
-    dur_weights = random.choice(possible_weights)
+    possible_weights = {
+        "balanced": (5, 10, 5, 50, 10, 50, 20),
+        "long_leaning": (80, 80, 10, 10, 10, 10, 10),
+        "brisk_leaning": (5, 5, 10, 10, 10, 80, 80),
+    }
 
-    return durations, dur_weights
+    @classmethod
+    def select_duration_profile(cls):
+        """Select the weight profile for getting a random duration value"""
+
+        selected_profile = random.choice(list(cls.possible_weights.keys()))
+        cls.duration_weights = cls.possible_weights[selected_profile]
+
+        return selected_profile
+
+    @classmethod
+    def get_duration(cls):
+        """Pick a duration using strategy profile"""
+
+        return random.choices(
+            NoteDurationStrategy.durations,
+            weights=NoteDurationStrategy.duration_weights,
+        )[0]
 
 
-def gen_duration(durations, dur_weights):
+def gen_duration():
     """Generator for durations"""
 
-    duration = random.choices(durations, weights=dur_weights)[0]
+    duration = NoteDurationStrategy.get_duration()
 
     if duration in [0.5, 0.25] and len(gen_duration.buffer) == 0:
         # If it was a 8th or 16th note, then make it be a group of 2 to 4 of them
@@ -188,11 +209,14 @@ def gen_duration(durations, dur_weights):
             gen_duration.buffer = [duration, duration]
 
     if len(gen_duration.buffer) > 0:
+        # If we have something in the buffer, use it up first
         yield gen_duration.buffer.pop()
     else:
         yield duration
 
 
+# Attach a 'buffer' to the generator function; this is the only way for it to
+# remember data between yields
 gen_duration.buffer = []
 
 
@@ -207,11 +231,23 @@ def get_pitches():
     return pitches
 
 
+def chord_listing(chords):
+    """Turn a list of chords into a string"""
+
+    output = []
+    for i, chord in enumerate(chords):
+        output.append(f"| {chord.name}".ljust(12))
+        if (i + 1) % 4 == 0:
+            output.append("\n".ljust(11))
+
+    return "{}{}".format("".join(output).strip(), "\n")
+
+
 class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 8
+    version = 10
 
     def __init__(self):
         self.pitches = get_pitches()
@@ -235,30 +271,38 @@ class Piece:
         self.seed = seed
         random.seed(seed)
 
-        self.beats_per_measure = random.choice([2, 3, 4, 5])
+        # Pick beats per measure
+        self.beats_per_measure = random.choice([2, 3, 4, 5, 6, 7])
         print(f"Time signature: {self.beats_per_measure}/4")
 
-        self.default_tempo = random.randint(90, 124)
+        # Pick tempo
+        self.default_tempo = random.randint(MIN_TEMPO, MAX_TEMPO)
         print(f"Tempo: {self.default_tempo}")
 
-        self.durations, self.dur_weights = get_durations()
+        # Select note duration profile
+        duration_profile = NoteDurationStrategy.select_duration_profile()
+        print(f"Note duration profile: {duration_profile}")
+
+        # Select bass style
         self.bass_style = random.choice(["simple", "marco", "marching"])
         print(f"Bass style: {self.bass_style}")
 
+        # Generate the song!
         structure = self.generate_structure()
 
         midi = self.create_track(
-            {"instrument": instrument_2, "track": 1, "channel": 1}, structure["chords"]
+            {"name": "Chords", "instrument": instrument_2, "track": 1, "channel": 1},
+            structure["chords"],
         )
 
         midi = self.create_track(
-            {"instrument": instrument_3, "track": 2, "channel": 2},
+            {"name": "Bass", "instrument": instrument_3, "track": 2, "channel": 2},
             structure["bass"],
             midi=midi,
         )
 
         midi = self.create_track(
-            {"instrument": instrument_1, "track": 0, "channel": 0},
+            {"name": "Melody", "instrument": instrument_1, "track": 0, "channel": 0},
             structure["melody"],
             midi=midi,
         )
@@ -272,6 +316,7 @@ class Piece:
 
         possible_sections = "abc"
 
+        # Generate content in different sections
         sections = {}
         for label in possible_sections:
             sections[label] = {}
@@ -284,14 +329,17 @@ class Piece:
             sections[label]["bass"] = self.generate_bass(chords)
             sections[label]["melody"] = self.generate_melody(chords)
 
+        # Put together the sections in a pattern
+        # E.g. aba, aabcbab, or abacab
         pattern = ["a"]  # Start with section a
         for _ in range(random.randint(2, 6)):
             pattern.append(random.choice(possible_sections))
         print("Pattern: {}".format("".join(pattern)))
 
+        print("-" * 60)
         structure = {"chords": [], "bass": [], "melody": []}
         for label in pattern:
-            print(f"Section {label}", sections[label]["chords"])
+            print(f"Section {label}", chord_listing(sections[label]["chords"]))
             structure["chords"].extend(sections[label]["chords"])
             structure["bass"].extend(sections[label]["bass"])
             structure["melody"].extend(sections[label]["melody"])
@@ -302,12 +350,13 @@ class Piece:
         structure["bass"].append(Note(gm.NOTE_NUMS["C_2"] - 12, duration=1, volume=80))
         structure["melody"].append(
             Note(
-                random.choice(chord.spread()).pitch,
+                random.choice(chord.spread(clamp=True)).pitch + 12,
                 duration=self.beats_per_measure,
                 volume=100,
             )
         )
-        print("Ending", chord)
+        print("Ending   ", chord_listing([chord]))
+        print("-" * 60)
 
         return structure
 
@@ -321,14 +370,34 @@ class Piece:
 
         chord_choices = [
             (0, "M"),
+            (0, "sus2"),
+            (0, "sus4"),
             (2, "m"),
+            (2, "sus2"),
+            (2, "sus4"),
             (4, "m"),
             (5, "M"),
+            (5, "sus2"),
             (7, "M"),
+            (7, "sus2"),
+            (7, "sus4"),
             (9, "m"),
+            (9, "sus2"),
+            (9, "sus4"),
             (11, "d"),
         ]
-        chord_weights = [50, 30, 30, 50, 50, 30, 1]
+        chord_weight_profiles = [
+            # 000 222 3 44 777 999 e
+            # Traditional, favor 1-4-5
+            [50, 0, 0, 30, 0, 0, 30, 50, 0, 50, 0, 0, 30, 0, 0, 1],
+            # More chance for other chords
+            [50, 10, 10, 30, 10, 10, 30, 50, 10, 50, 10, 10, 30, 10, 10, 1],
+            # Event more chance for other chords
+            [50, 20, 20, 40, 20, 20, 40, 30, 20, 30, 20, 20, 40, 20, 20, 1],
+            # Equal across the degrees, except diminished
+            [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 5],
+        ]
+        chord_weights = random.choice(chord_weight_profiles)
 
         time = 0
         chords = []
@@ -343,6 +412,12 @@ class Piece:
                     suffix = "maj7"
                 elif quality == "d":
                     suffix = "min7dim5"  # To keep it in the key
+                elif quality in ["sus2", "sus4"]:
+                    suffix = ""
+                    if (quality == "sus2" and root_shift in [2, 7, 9]) or (
+                        quality == "sus4" and root_shift in [2, 4, 5, 9]
+                    ):
+                        quality = "7{}".format(quality)
                 else:
                     suffix = "7"
                 quality = "{}{}".format(quality, suffix)
@@ -390,70 +465,92 @@ class Piece:
     def generate_melody(self, chords):
         """Generate a melody"""
 
+        # Select weighting for choosing how far the next pitch is
+        self.interval_deltas = [0, 1, 2, 3, 4, 5]
+        iv_weights_profiles = [
+            (90, 80, 0, 0, 0, 0),  # Static
+            (90, 50, 50, 5, 5, 10),  # Balanced
+            (10, 10, 10, 10, 10, 10),  # Jumpy
+        ]
+        self.iv_weights = random.choice(iv_weights_profiles)
+
+        # Select strategy for picking notes
+        # First number is chance for using intervals to pick notes, second
+        # number is chance to use a note from the chord only
+        self.melodic_contour_strategy = random.choice([(100, 0), (50, 50), (20, 80)])
+
         notes_data = []
         for chord in chords:
-            chord_note = random.choice(chord.spread())
-            pitch = chord_note.pitch + 12  # An octave above
-            motive = self.generate_motive(pitch, chord_note.duration)
+            motive = self.generate_motive(chord, chord.duration)
 
             motive_duration = sum(n.duration for n in motive)
-            if motive_duration > chord_note.duration:
+            if motive_duration > chord.duration:
                 # Cut off last note to end at the measure
                 up_to_last = sum(n.duration for n in motive[0:-1])
-                motive[-1].duration = chord_note.duration - up_to_last
+                motive[-1].duration = chord.duration - up_to_last
 
             notes_data.extend(motive)
 
         return notes_data
 
-    def generate_motive(self, root, length=4):
+    def generate_motive(self, chord, length=4):
         """Generate a little motive around a root note"""
 
         volume = 100
-        interval_deltas = [0, 1, 2, 3, 4, 5]
-        iv_weights = (90, 50, 50, 5, 5, 10)
+
+        # Keep melody from getting too wild, high or low
         min_pitch = gm.NOTE_NUMS["C_2"]
         max_pitch = gm.NOTE_NUMS["C_5"]
 
+        # Define the starting pitch
+        pitch = chord.root + 12
+
         try:
-            index = self.pitches.index(root)
+            index = self.pitches.index(pitch)
         except ValueError:
             # Is an accidental; add it to the list of pitches?
-            self.pitches.append(root)
+            self.pitches.append(pitch)
             self.pitches.sort()
-            index = self.pitches.index(root)
+            index = self.pitches.index(pitch)
 
-        pitch = root
         notes_data = []
         time = 0
         max_time = time + length
         while time < max_time:
-            # A rest or a note?
-            if random.choices([True, False], weights=(100, 40))[0]:
-                note_type = "note"
-            else:
-                note_type = "rest"
-
-            if note_type == "note":
-                # Choose a new pitch
-                interval = random.choices(interval_deltas, weights=iv_weights)[0]
-                if random.choice([True, False]):
-                    pitch = self.pitches[index + interval]
-                    if pitch > max_pitch:
-                        pitch = pitch - 12
-                else:
-                    pitch = self.pitches[index - interval]
-                    if pitch < min_pitch:
-                        pitch = pitch + 12
-
             # Choose a duration
-            duration = next(gen_duration(self.durations, self.dur_weights))
+            duration = next(gen_duration())
 
-            # Add to list of notes
-            if note_type == "note":
+            # A rest or a note?
+            if random.choices([True, False], weights=(100, 20))[0]:
+                # Choose a new pitch
+                if random.choices([True, False], weights=self.melodic_contour_strategy)[
+                    0
+                ]:
+                    # Pick a pitch by moving by an interval along scale
+                    interval = random.choices(
+                        self.interval_deltas, weights=self.iv_weights
+                    )[0]
+                    if random.choice([True, False]):
+                        # Up in pitch
+                        pitch = self.pitches[index + interval]
+                        if pitch > max_pitch:
+                            pitch = pitch - 12
+                    else:
+                        # Down in pitch
+                        pitch = self.pitches[index - interval]
+                        if pitch < min_pitch:
+                            pitch = pitch + 12
+                else:
+                    # Pick a pitch from the chord
+                    chord_note = random.choice(chord.spread(clamp=True))
+                    pitch = chord_note.pitch + 12  # An octave above
+
+                # Add to list of notes
                 notes_data.append(Note(pitch, duration, volume))
             else:
+                # Add a rest
                 notes_data.append(Rest(duration))
+
             time = time + duration
 
         return notes_data
@@ -501,6 +598,7 @@ class Piece:
             elif isinstance(item, Note):
                 add_note(onset_time, item)
             elif isinstance(item, Chord):
+                midi.addText(track, onset_time, item.name)
                 notes = item.spread(clamp=True)
                 for note in notes:
                     add_note(onset_time, note)
@@ -515,8 +613,10 @@ def main():
 
     sys.argv.pop(0)
     if len(sys.argv) > 0:
+        # Use seed provided from command invocation
         seed = sys.argv[0]
     else:
+        # Pick a random seed number
         seed = str(random.randint(0, 65535))
 
     piece = Piece()
@@ -527,7 +627,7 @@ def main():
     with open(filename, "wb") as output_file:
         midi.writeFile(output_file)
 
-    print("Playing generated piece")
+    print(f"Playing generated {filename}")
     play_music(filename)
     print("done.")
 

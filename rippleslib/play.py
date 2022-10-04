@@ -39,11 +39,14 @@ if __name__ == "__main__":
 
     sys.argv.pop(0)
     if len(sys.argv) > 0:
-        midi_file = sys.argv[0]
+        midi_files = sys.argv
     else:
-        midi_file = "example.mid"
+        midi_files = ["example.mid"]
 
-    play_music(midi_file)
+    for midi_file in midi_files:
+        print("Playing {}".format(midi_file))
+        play_music(midi_file)
+
     print("done")
 
     pygame.quit()
