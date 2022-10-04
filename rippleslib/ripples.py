@@ -220,6 +220,78 @@ def gen_duration():
 gen_duration.buffer = []
 
 
+class ChordStrategy:
+    """Strategy for selecting choices and weights for chords"""
+
+    # 0 1 2 3 4 5 6 7 8 9 10 11 12
+    # C | D | E F | G | A |  B  C
+
+    # Tuple containing (root_shift, quality)
+    chord_choices = [
+        (0, "M"),
+        (0, "sus2"),
+        (0, "sus4"),
+        (2, "m"),
+        (2, "sus2"),
+        (2, "sus4"),
+        (4, "m"),
+        (5, "M"),
+        (5, "sus2"),
+        (7, "M"),
+        (7, "sus2"),
+        (7, "sus4"),
+        (9, "m"),
+        (9, "sus2"),
+        (9, "sus4"),
+        (11, "d"),
+    ]
+
+    chord_weight_profiles = [
+        # 000 222 3 44 777 999 e
+        # Traditional, favor 1-4-5
+        [50, 0, 0, 30, 0, 0, 30, 50, 0, 50, 0, 0, 30, 0, 0, 1],
+        # More chance for other chords
+        [50, 5, 5, 30, 5, 5, 30, 50, 5, 50, 5, 5, 30, 5, 5, 1],
+        # Even more chance for other chords
+        [50, 10, 10, 40, 10, 10, 40, 30, 10, 30, 10, 10, 40, 10, 10, 1],
+        # Equal across the degrees, except diminished
+        [10, 5, 5, 10, 5, 5, 10, 10, 5, 10, 5, 5, 10, 5, 5, 2],
+    ]
+
+    @classmethod
+    def select_chord_profile(cls):
+        """Select profile for picking chords"""
+
+        cls.chord_weights = random.choice(cls.chord_weight_profiles)
+
+    @classmethod
+    def get_chord(cls):
+
+        pick = random.choices(cls.chord_choices, weights=cls.chord_weights)[0]
+        root_shift, quality = pick
+
+        # Pick whether to turn into a 7th chord
+        if random.choices([True, False], weights=(20, 80))[0]:
+            if quality == "M" and root_shift != 7:
+                suffix = "maj7"
+            elif quality == "d":
+                suffix = "min7dim5"  # To keep it in the key
+            elif quality in ["sus2", "sus4"]:
+                suffix = ""
+                if (quality == "sus2" and root_shift in [2, 7, 9]) or (
+                    quality == "sus4" and root_shift in [2, 4, 5, 9]
+                ):
+                    quality = "7{}".format(quality)
+            else:
+                suffix = "7"
+            quality = "{}{}".format(quality, suffix)
+
+        # Pick an inversion of the chord to use
+        inversion = random.choice([0, 1, 2])
+
+        return root_shift, quality, inversion
+
+
 def get_pitches():
     """Get list of all pitches in the key"""
 
@@ -236,7 +308,7 @@ def chord_listing(chords):
 
     output = []
     for i, chord in enumerate(chords):
-        output.append(f"| {chord.name}".ljust(12))
+        output.append(f"|{chord.duration} {chord.name}".ljust(12))
         if (i + 1) % 4 == 0:
             output.append("\n".ljust(11))
 
@@ -247,7 +319,7 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 10
+    version = 11
 
     def __init__(self):
         self.pitches = get_pitches()
@@ -321,10 +393,14 @@ class Piece:
         for label in possible_sections:
             sections[label] = {}
 
+            ChordStrategy.select_chord_profile()
+
             measures = random.choice([2, 3, 4, 8])
             chords = self.generate_chords(measures)
-            if measures < 5:
+
+            if measures < 5 and random.choice([True, False]):
                 chords = chords + chords  # Double it up, but we'll get different melody
+
             sections[label]["chords"] = chords
             sections[label]["bass"] = self.generate_bass(chords)
             sections[label]["melody"] = self.generate_melody(chords)
@@ -334,6 +410,12 @@ class Piece:
         pattern = ["a"]  # Start with section a
         for _ in range(random.randint(2, 6)):
             pattern.append(random.choice(possible_sections))
+            # Make sure all parts are represented
+            if "b" not in pattern:
+                pattern.insert(random.randint(1, len(pattern)), "b")
+            if "c" not in pattern:
+                pattern.insert(random.randint(1, len(pattern)), "c")
+
         print("Pattern: {}".format("".join(pattern)))
 
         print("-" * 60)
@@ -365,75 +447,39 @@ class Piece:
 
         root = gm.NOTE_NUMS["C_2"]
 
-        # 0 1 2 3 4 5 6 7 8 9 10 11 12
-        # C | D | E F | G | A |  B  C
-
-        chord_choices = [
-            (0, "M"),
-            (0, "sus2"),
-            (0, "sus4"),
-            (2, "m"),
-            (2, "sus2"),
-            (2, "sus4"),
-            (4, "m"),
-            (5, "M"),
-            (5, "sus2"),
-            (7, "M"),
-            (7, "sus2"),
-            (7, "sus4"),
-            (9, "m"),
-            (9, "sus2"),
-            (9, "sus4"),
-            (11, "d"),
-        ]
-        chord_weight_profiles = [
-            # 000 222 3 44 777 999 e
-            # Traditional, favor 1-4-5
-            [50, 0, 0, 30, 0, 0, 30, 50, 0, 50, 0, 0, 30, 0, 0, 1],
-            # More chance for other chords
-            [50, 10, 10, 30, 10, 10, 30, 50, 10, 50, 10, 10, 30, 10, 10, 1],
-            # Event more chance for other chords
-            [50, 20, 20, 40, 20, 20, 40, 30, 20, 30, 20, 20, 40, 20, 20, 1],
-            # Equal across the degrees, except diminished
-            [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 5],
-        ]
-        chord_weights = random.choice(chord_weight_profiles)
-
         time = 0
         chords = []
         for _ in range(0, measures):
-            # Pick which chord from the scale to use
-            pick = random.choices(chord_choices, weights=chord_weights)[0]
-            root_shift, quality = pick
+            sub_measures = [self.beats_per_measure]
 
-            # Pick whether to turn into a 7th chord
-            if random.choices([True, False], weights=(20, 80))[0]:
-                if quality == "M" and root_shift != 7:
-                    suffix = "maj7"
-                elif quality == "d":
-                    suffix = "min7dim5"  # To keep it in the key
-                elif quality in ["sus2", "sus4"]:
-                    suffix = ""
-                    if (quality == "sus2" and root_shift in [2, 7, 9]) or (
-                        quality == "sus4" and root_shift in [2, 4, 5, 9]
-                    ):
-                        quality = "7{}".format(quality)
-                else:
-                    suffix = "7"
-                quality = "{}{}".format(quality, suffix)
+            if (
+                self.beats_per_measure > 3
+                and random.choices([True, False], weights=[10, 90])[0]
+            ):
+                # Split up measure into multiple chords
+                if self.beats_per_measure == 4:
+                    sub_measures = [2, 2]
+                elif self.beats_per_measure == 5:
+                    sub_measures = random.choice([[3, 2], [2, 3]])
+                elif self.beats_per_measure == 6:
+                    sub_measures = random.choice([[3, 3], [4, 2], [2, 4]])
+                elif self.beats_per_measure == 7:
+                    sub_measures = random.choice([[3, 4], [4, 3], [2, 2, 3], [3, 2, 2]])
 
-            # Pick an inversion of the chord to use
-            inversion = random.choice([0, 1, 2])
+            for chord_duration in sub_measures:
+                # Pick which chord from the scale to use
+                root_shift, quality, inversion = ChordStrategy.get_chord()
 
-            chords.append(
-                Chord(
-                    root + root_shift,
-                    quality,
-                    duration=self.beats_per_measure,
-                    inversion=inversion,
+                chords.append(
+                    Chord(
+                        root + root_shift,
+                        quality,
+                        duration=chord_duration,
+                        inversion=inversion,
+                    )
                 )
-            )
-            time = time + self.beats_per_measure
+
+                time = time + chord_duration
 
         return chords
 
