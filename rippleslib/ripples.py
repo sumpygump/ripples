@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Ripples engine"""
 
+import logging
 import sys
 import random
 
@@ -11,6 +12,9 @@ from play import play_music
 
 MIN_TEMPO = 90
 MAX_TEMPO = 124
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
 
 
 class Note:
@@ -119,7 +123,6 @@ class Chord:
         self.inversion = inversion
         self.duration = duration
         self.volume = volume
-        self.pitches = get_pitches()
 
     @property
     def name(self):
@@ -292,12 +295,34 @@ class ChordStrategy:
         return root_shift, quality, inversion
 
 
-def get_pitches():
+def get_pitches(root=0):
     """Get list of all pitches in the key"""
 
-    key_template = [0, 2, 4, 5, 7, 9, 11]
+    # 0 1 2 3 4 5 6 7 8 9 10 11 12
+    # C | D | E F | G | A |  B  C
+
+    key_templates = {
+        "C": [0, 2, 4, 5, 7, 9, 11],
+        "C#": [0, 1, 3, 5, 6, 8, 10],
+        "D": [1, 2, 4, 6, 7, 9, 11],
+        "D#": [0, 2, 3, 5, 7, 8, 10],
+        "E": [1, 3, 4, 6, 8, 9, 11],
+        "F": [0, 2, 4, 5, 7, 9, 10],
+        "F#": [1, 3, 5, 6, 8, 10, 11],
+        "G": [0, 2, 4, 6, 7, 9, 11],
+        "G#": [0, 1, 3, 5, 7, 8, 10],
+        "A": [1, 2, 4, 6, 8, 9, 11],
+        "A#": [0, 2, 3, 5, 7, 9, 10],
+        "B": [1, 3, 4, 6, 8, 10, 11],
+    }
+
+    try:
+        key_template = key_templates.get(gm.NOTE_CLASS[root], key_templates["C"])
+    except (AttributeError, TypeError):
+        key_template = key_templates["C"]
+
     pitches = []
-    for octave_note in range(0, 7 * 12 + 1, 12):
+    for octave_note in range(0, 8 * 12 + 1, 12):
         pitches.extend([octave_note + n for n in key_template])
 
     return pitches
@@ -319,45 +344,63 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 11
+    version = 12
 
     def __init__(self):
-        self.pitches = get_pitches()
         pass
 
     def generate(self, seed):
         """Generate the entire song (piece)"""
 
-        print("-" * 32)
-        print(f"Generating melody {seed}")
-        print("-" * 32)
+        logger.info("-" * 32)
+        logger.info(f"Generating melody {seed}")
+        logger.info("-" * 32)
 
         instrument_1 = random.choice(gm.ALL_LEAD_LIKE_SET)
         instrument_2 = random.choice(gm.ALL_ACCOMPANIMENT_SET)
         instrument_3 = random.choice(gm.BASS_SET)
-        print(f"Melody instrument {instrument_1}")
-        print(f"Accompaniment instrument {instrument_2}")
-        print(f"Bass instrument {instrument_3}")
+        logger.info(f"Melody instrument {instrument_1}")
+        logger.info(f"Accompaniment instrument {instrument_2}")
+        logger.info(f"Bass instrument {instrument_3}")
 
         # Set up the random seed
         self.seed = seed
         random.seed(seed)
 
+        # Pick the key
+        key_choices = [
+            "C_2",
+            "C#_2",
+            "D_2",
+            "D#_2",
+            "E_2",
+            "F_2",
+            "G_2",
+            "G#_2",
+            "A_2",
+            "A#_2",
+            "B_2",
+        ]
+        key = random.choice(key_choices)
+        self.key_root = gm.NOTE_NUMS.get(key, gm.NOTE_NUMS["C_2"])
+        self.pitches = get_pitches(self.key_root)
+        logger.info("Key: {}".format(gm.NOTE_CLASS[self.key_root]))
+
         # Pick beats per measure
         self.beats_per_measure = random.choice([2, 3, 4, 5, 6, 7])
-        print(f"Time signature: {self.beats_per_measure}/4")
+        logger.info(f"Time signature: {self.beats_per_measure}/4")
 
         # Pick tempo
         self.default_tempo = random.randint(MIN_TEMPO, MAX_TEMPO)
-        print(f"Tempo: {self.default_tempo}")
+        logger.info(f"Tempo: {self.default_tempo}")
 
         # Select note duration profile
         duration_profile = NoteDurationStrategy.select_duration_profile()
-        print(f"Note duration profile: {duration_profile}")
+        logger.info(f"Note duration profile: {duration_profile}")
 
         # Select bass style
         self.bass_style = random.choice(["simple", "marco", "marching"])
-        print(f"Bass style: {self.bass_style}")
+        logger.info(f"Bass style: {self.bass_style}")
 
         # Generate the song!
         structure = self.generate_structure()
@@ -374,7 +417,12 @@ class Piece:
         )
 
         midi = self.create_track(
-            {"name": "Melody", "instrument": instrument_1, "track": 0, "channel": 0},
+            {
+                "name": f"Melody {self.seed}",
+                "instrument": instrument_1,
+                "track": 0,
+                "channel": 0,
+            },
             structure["melody"],
             midi=midi,
         )
@@ -398,7 +446,7 @@ class Piece:
             measures = random.choice([2, 3, 4, 8])
             chords = self.generate_chords(measures)
 
-            if measures < 5 and random.choice([True, False]):
+            if measures < 5:
                 chords = chords + chords  # Double it up, but we'll get different melody
 
             sections[label]["chords"] = chords
@@ -416,20 +464,22 @@ class Piece:
             if "c" not in pattern:
                 pattern.insert(random.randint(1, len(pattern)), "c")
 
-        print("Pattern: {}".format("".join(pattern)))
+        logger.info("Pattern: %s", "".join(pattern))
 
-        print("-" * 60)
+        logger.info("-" * 60)
         structure = {"chords": [], "bass": [], "melody": []}
         for label in pattern:
-            print(f"Section {label}", chord_listing(sections[label]["chords"]))
+            logger.info(
+                "Section %s %s", label, chord_listing(sections[label]["chords"])
+            )
             structure["chords"].extend(sections[label]["chords"])
             structure["bass"].extend(sections[label]["bass"])
             structure["melody"].extend(sections[label]["melody"])
 
         # Ending
-        chord = Chord(gm.NOTE_NUMS["C_2"], "M", duration=self.beats_per_measure)
+        chord = Chord(self.key_root, "M", duration=self.beats_per_measure)
         structure["chords"].append(chord)
-        structure["bass"].append(Note(gm.NOTE_NUMS["C_2"] - 12, duration=1, volume=80))
+        structure["bass"].append(Note(self.key_root - 12, duration=1, volume=80))
         structure["melody"].append(
             Note(
                 random.choice(chord.spread(clamp=True)).pitch + 12,
@@ -437,15 +487,15 @@ class Piece:
                 volume=100,
             )
         )
-        print("Ending   ", chord_listing([chord]))
-        print("-" * 60)
+        logger.info("Ending   %s", chord_listing([chord]))
+        logger.info("-" * 60)
 
         return structure
 
     def generate_chords(self, measures=4):
         """Generate a chord progression"""
 
-        root = gm.NOTE_NUMS["C_2"]
+        root = self.key_root
 
         time = 0
         chords = []
@@ -511,23 +561,32 @@ class Piece:
     def generate_melody(self, chords):
         """Generate a melody"""
 
+        logger.debug("======== New melody for section ========")
         # Select weighting for choosing how far the next pitch is
         self.interval_deltas = [0, 1, 2, 3, 4, 5]
         iv_weights_profiles = [
             (90, 80, 0, 0, 0, 0),  # Static
-            (90, 50, 50, 5, 5, 10),  # Balanced
             (10, 10, 10, 10, 10, 10),  # Jumpy
+            (90, 50, 50, 5, 5, 10),  # Balanced
         ]
         self.iv_weights = random.choice(iv_weights_profiles)
+        logger.debug("iv_weights %s", self.iv_weights)
 
         # Select strategy for picking notes
         # First number is chance for using intervals to pick notes, second
         # number is chance to use a note from the chord only
         self.melodic_contour_strategy = random.choice([(100, 0), (50, 50), (20, 80)])
+        logger.debug("melodic_contour_strategy %s", self.melodic_contour_strategy)
+
+        # This is a storage of intervals that will get used again for some
+        # repititous note picking for a different chord
+        self.iv_stack = []
 
         notes_data = []
         for chord in chords:
-            motive = self.generate_motive(chord, chord.duration)
+            # Use the stack if we have substance in there
+            use_stack = len(self.iv_stack) > 4
+            motive = self.generate_motive(chord, chord.duration, use_stack)
 
             motive_duration = sum(n.duration for n in motive)
             if motive_duration > chord.duration:
@@ -539,9 +598,12 @@ class Piece:
 
         return notes_data
 
-    def generate_motive(self, chord, length=4):
+    def generate_motive(self, chord, length=4, use_stack=False):
         """Generate a little motive around a root note"""
 
+        logger.debug("--------")
+        logger.debug("> generate motive; use stack: %s", use_stack)
+        logger.debug("iv_stack %s", self.iv_stack)
         volume = 100
 
         # Keep melody from getting too wild, high or low
@@ -549,7 +611,8 @@ class Piece:
         max_pitch = gm.NOTE_NUMS["C_5"]
 
         # Define the starting pitch
-        pitch = chord.root + 12
+        chord_note = random.choice(chord.spread(clamp=True))
+        pitch = chord_note.pitch + 12
 
         try:
             index = self.pitches.index(pitch)
@@ -562,43 +625,86 @@ class Piece:
         notes_data = []
         time = 0
         max_time = time + length
+        logger.debug("Start pitch %s %s", pitch, gm.NOTE_NAMES[pitch])
+        first_note = True
         while time < max_time:
             # Choose a duration
             duration = next(gen_duration())
 
+            if first_note:
+                notes_data.append(Note(pitch, duration, volume))
+                time = time + duration
+                first_note = False
+                continue
+
             # A rest or a note?
-            if random.choices([True, False], weights=(100, 20))[0]:
+            if random.choices([True, False], weights=(100, 10))[0]:
                 # Choose a new pitch
-                if random.choices([True, False], weights=self.melodic_contour_strategy)[
-                    0
-                ]:
-                    # Pick a pitch by moving by an interval along scale
-                    interval = random.choices(
-                        self.interval_deltas, weights=self.iv_weights
+                if use_stack and len(self.iv_stack) > 0:
+                    do_pitch_by_interval = True
+                else:
+                    use_stack = False  # Force to not use it this motive
+                    do_pitch_by_interval = random.choices(
+                        [True, False], weights=self.melodic_contour_strategy
                     )[0]
-                    if random.choice([True, False]):
-                        # Up in pitch
-                        pitch = self.pitches[index + interval]
-                        if pitch > max_pitch:
-                            pitch = pitch - 12
+
+                if do_pitch_by_interval:
+                    if use_stack and len(self.iv_stack) > 0:
+                        # Grab an interval off the stack
+                        interval = self.iv_stack.pop(0)
+                        pitch = self.pitches[index]
+                        msg = f"Interval from stack {interval}"
                     else:
-                        # Down in pitch
-                        pitch = self.pitches[index - interval]
-                        if pitch < min_pitch:
-                            pitch = pitch + 12
+                        # Pick a pitch by moving by an interval along scale
+                        interval = random.choices(
+                            self.interval_deltas, weights=self.iv_weights
+                        )[0]
+                        direction_down = random.choice([False, True])
+                        if direction_down:
+                            interval = interval * -1
+                        msg = f"Interval {interval}"
+
+                    index += interval
+                    pitch = self.pitches[index]
+                    logger.debug("%s %s %s", msg, pitch, gm.NOTE_NAMES[pitch])
+                    if pitch > max_pitch:
+                        pitch = pitch - 12
+                        index = self.pitches.index(pitch)
+                        logger.debug("  clamp down %s %s", pitch, gm.NOTE_NAMES[pitch])
+                    elif pitch < min_pitch:
+                        pitch = pitch + 12
+                        index = self.pitches.index(pitch)
+                        logger.debug("  clamp up %s %s", pitch, gm.NOTE_NAMES[pitch])
+
+                    if not use_stack:
+                        self.iv_stack.append(interval)
                 else:
                     # Pick a pitch from the chord
                     chord_note = random.choice(chord.spread(clamp=True))
                     pitch = chord_note.pitch + 12  # An octave above
+                    logger.debug("Pitch from chord %s %s", pitch, gm.NOTE_NAMES[pitch])
+                    try:
+                        previous_index = index
+                        index = self.pitches.index(pitch)
+                    except ValueError:
+                        # Is an accidental; add it to the list of pitches?
+                        self.pitches.append(pitch)
+                        self.pitches.sort()
+                        index = self.pitches.index(pitch)
+                    if not use_stack:
+                        interval = index - previous_index
+                        self.iv_stack.append(interval)
 
                 # Add to list of notes
                 notes_data.append(Note(pitch, duration, volume))
             else:
+                logger.debug("A rest!")
                 # Add a rest
                 notes_data.append(Rest(duration))
 
             time = time + duration
 
+        logger.debug("Stack %s", self.iv_stack)
         return notes_data
 
     def create_track(self, meta_data, notes_data, midi=None):
@@ -656,6 +762,14 @@ class Piece:
 
 
 def main():
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(logging.INFO)
+    logger.addHandler(stream_handler)
+
+    file_handler = logging.FileHandler(filename="ripples.log")
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
 
     sys.argv.pop(0)
     if len(sys.argv) > 0:
