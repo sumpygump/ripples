@@ -353,15 +353,15 @@ class Piece:
         """Generate the entire song (piece)"""
 
         logger.info("-" * 32)
-        logger.info(f"Generating melody {seed}")
+        logger.info("Generating melody %s", seed)
         logger.info("-" * 32)
 
         instrument_1 = random.choice(gm.ALL_LEAD_LIKE_SET)
         instrument_2 = random.choice(gm.ALL_ACCOMPANIMENT_SET)
         instrument_3 = random.choice(gm.BASS_SET)
-        logger.info(f"Melody instrument {instrument_1}")
-        logger.info(f"Accompaniment instrument {instrument_2}")
-        logger.info(f"Bass instrument {instrument_3}")
+        logger.info("Melody instrument %s", instrument_1)
+        logger.info("Accompaniment instrument %s", instrument_2)
+        logger.info("Bass instrument %s", instrument_3)
 
         # Set up the random seed
         self.seed = seed
@@ -384,23 +384,23 @@ class Piece:
         key = random.choice(key_choices)
         self.key_root = gm.NOTE_NUMS.get(key, gm.NOTE_NUMS["C_2"])
         self.pitches = get_pitches(self.key_root)
-        logger.info("Key: {}".format(gm.NOTE_CLASS[self.key_root]))
+        logger.info("Key: %s", gm.NOTE_CLASS[self.key_root])
 
         # Pick beats per measure
         self.beats_per_measure = random.choice([2, 3, 4, 5, 6, 7])
-        logger.info(f"Time signature: {self.beats_per_measure}/4")
+        logger.info("Time signature: %s/4", self.beats_per_measure)
 
         # Pick tempo
         self.default_tempo = random.randint(MIN_TEMPO, MAX_TEMPO)
-        logger.info(f"Tempo: {self.default_tempo}")
+        logger.info("Tempo: %s", self.default_tempo)
 
         # Select note duration profile
         duration_profile = NoteDurationStrategy.select_duration_profile()
-        logger.info(f"Note duration profile: {duration_profile}")
+        logger.info("Note duration profile: %s", duration_profile)
 
         # Select bass style
         self.bass_style = random.choice(["simple", "marco", "marching"])
-        logger.info(f"Bass style: {self.bass_style}")
+        logger.info("Bass style: %s", self.bass_style)
 
         # Generate the song!
         structure = self.generate_structure()
