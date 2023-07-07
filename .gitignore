@@ -2,3 +2,4 @@
 .coverage
 *.mid
 ripples.log
+__pycache__
