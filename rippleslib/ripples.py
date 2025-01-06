@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Ripples engine"""
 
+import argparse
 import logging
 import sys
 import random
@@ -193,10 +194,13 @@ class NoteDurationStrategy:
     def get_duration(cls):
         """Pick a duration using strategy profile"""
 
-        return random.choices(
+        choice = random.choices(
             NoteDurationStrategy.durations,
             weights=NoteDurationStrategy.duration_weights,
         )[0]
+        return choice
+        # Override; everything is an eighth note
+        #return 1 / 2
 
 
 def gen_duration():
@@ -268,10 +272,13 @@ class ChordStrategy:
         cls.chord_weights = random.choice(cls.chord_weight_profiles)
 
     @classmethod
-    def get_chord(cls):
+    def get_chord(cls, override_use_root=False):
 
         pick = random.choices(cls.chord_choices, weights=cls.chord_weights)[0]
         root_shift, quality = pick
+
+        if override_use_root:
+            root_shift, quality = cls.chord_choices[0]
 
         # Pick whether to turn into a 7th chord
         if random.choices([True, False], weights=(20, 80))[0]:
@@ -344,12 +351,14 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 12
+    version = 13
 
-    def __init__(self):
-        pass
+    def __init__(self, render_chords=True, render_bass=True, render_melody=True):
+        self.render_chords = render_chords
+        self.render_bass = render_bass
+        self.render_melody = render_melody
 
-    def generate(self, seed):
+    def generate(self, seed, in_key=None, in_beats=None, in_only=None):
         """Generate the entire song (piece)"""
 
         logger.info("-" * 32)
@@ -382,12 +391,16 @@ class Piece:
             "B_2",
         ]
         key = random.choice(key_choices)
+        if in_key:
+            key = in_key
         self.key_root = gm.NOTE_NUMS.get(key, gm.NOTE_NUMS["C_2"])
         self.pitches = get_pitches(self.key_root)
         logger.info("Key: %s", gm.NOTE_CLASS[self.key_root])
 
         # Pick beats per measure
         self.beats_per_measure = random.choice([2, 3, 4, 5, 6, 7])
+        if in_beats:
+            self.beats_per_measure = int(in_beats)
         logger.info("Time signature: %s/4", self.beats_per_measure)
 
         # Pick tempo
@@ -403,35 +416,44 @@ class Piece:
         logger.info("Bass style: %s", self.bass_style)
 
         # Generate the song!
-        structure = self.generate_structure()
+        only_one = in_only if in_only is not None else False
+        structure = self.generate_structure(only_one=only_one)
 
-        midi = self.create_track(
-            {"name": "Chords", "instrument": instrument_2, "track": 1, "channel": 1},
-            structure["chords"],
-        )
+        if self.render_chords:
+            midi = self.create_track(
+                {
+                    "name": "Chords",
+                    "instrument": instrument_2,
+                    "track": 1,
+                    "channel": 1,
+                },
+                structure["chords"],
+            )
 
-        midi = self.create_track(
-            {"name": "Bass", "instrument": instrument_3, "track": 2, "channel": 2},
-            structure["bass"],
-            midi=midi,
-        )
+        if self.render_bass:
+            midi = self.create_track(
+                {"name": "Bass", "instrument": instrument_3, "track": 2, "channel": 2},
+                structure["bass"],
+                midi=midi,
+            )
 
-        midi = self.create_track(
-            {
-                "name": f"Melody {self.seed}",
-                "instrument": instrument_1,
-                "track": 0,
-                "channel": 0,
-            },
-            structure["melody"],
-            midi=midi,
-        )
+        if self.render_melody:
+            midi = self.create_track(
+                {
+                    "name": f"Melody {self.seed}",
+                    "instrument": instrument_1,
+                    "track": 0,
+                    "channel": 0,
+                },
+                structure["melody"],
+                midi=midi,
+            )
 
         random.seed(None)
 
         return midi
 
-    def generate_structure(self):
+    def generate_structure(self, only_one=False):
         """Plan out a structure for the song"""
 
         possible_sections = "abc"
@@ -444,7 +466,8 @@ class Piece:
             ChordStrategy.select_chord_profile()
 
             measures = random.choice([2, 3, 4, 8])
-            chords = self.generate_chords(measures)
+            first_section = label == "a"
+            chords = self.generate_chords(measures, first_section)
 
             if measures < 5:
                 chords = chords + chords  # Double it up, but we'll get different melody
@@ -463,6 +486,9 @@ class Piece:
                 pattern.insert(random.randint(1, len(pattern)), "b")
             if "c" not in pattern:
                 pattern.insert(random.randint(1, len(pattern)), "c")
+
+        if only_one:
+            pattern = ["a"]
 
         logger.info("Pattern: %s", "".join(pattern))
 
@@ -492,13 +518,14 @@ class Piece:
 
         return structure
 
-    def generate_chords(self, measures=4):
+    def generate_chords(self, measures=4, first_section=False):
         """Generate a chord progression"""
 
         root = self.key_root
 
         time = 0
         chords = []
+        first_chord = first_section
         for _ in range(0, measures):
             sub_measures = [self.beats_per_measure]
 
@@ -518,7 +545,10 @@ class Piece:
 
             for chord_duration in sub_measures:
                 # Pick which chord from the scale to use
-                root_shift, quality, inversion = ChordStrategy.get_chord()
+                root_shift, quality, inversion = ChordStrategy.get_chord(first_chord)
+
+                if first_chord:
+                    first_chord = False
 
                 chords.append(
                     Chord(
@@ -763,6 +793,16 @@ class Piece:
 
 def main():
 
+    # Handle command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-k", "--key", help="Set the key")
+    parser.add_argument("-b", "--beats", help="Beats per measure")
+    parser.add_argument("-o", "--one", action="store_true", help="Only one section")
+    parser.add_argument("seed", nargs="?", help="Specify seed")
+
+    # Returns tuple of args and remaining (unhandled args)
+    (args, _) = parser.parse_known_args(sys.argv[1:])
+
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
@@ -771,16 +811,16 @@ def main():
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
 
-    sys.argv.pop(0)
-    if len(sys.argv) > 0:
+    if args.seed:
         # Use seed provided from command invocation
-        seed = sys.argv[0]
+        seed = args.seed
     else:
         # Pick a random seed number
         seed = str(random.randint(0, 65535))
 
-    piece = Piece()
-    midi = piece.generate(seed)
+    piece = Piece(render_melody=True)
+    print(args)
+    midi = piece.generate(seed, in_key=args.key, in_beats=args.beats, in_only=args.one)
 
     filename = f"song-v{Piece.version}-{seed}.mid"
 
