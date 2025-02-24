@@ -191,16 +191,81 @@ class NoteDurationStrategy:
         return selected_profile
 
     @classmethod
+    def set_chords(cls, beats_per_measure, chords):
+        """Set the chords which will populate a slew of durations"""
+        logger.debug("======== Making up rhythms ========")
+        rhythms = []
+        if beats_per_measure == 2:
+            rhythms.append([1, 1])
+            rhythms.append([2])
+        elif beats_per_measure == 3:
+            rhythms.append([1, 1, 1])
+            rhythms.append([2, 1])
+            rhythms.append([1, 2])
+            rhythms.append([3])
+            rhythms.append([1.5, 0.5, 0.5, 0.5])
+            rhythms.append([1.5, 0.5, 0.75, 0.25])
+            rhythms.append([2, 0.5, 0.5])
+            rhythms.append([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+        elif beats_per_measure == 4:
+            rhythms.append([1, 1, 1, 1])
+            rhythms.append([1, 1, 2])
+            rhythms.append([2, 1, 1])
+            rhythms.append([2, 2])
+            rhythms.append([2, 0.5, 0.5, 1])
+            rhythms.append([1, 0.5, 0.5, 2])
+            rhythms.append([1.5, 0.5, 1, 1])
+            rhythms.append([1.5, 0.5, 2])
+            rhythms.append([1.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+            rhythms.append([0.75, 0.25, 1, 1, 1])
+            rhythms.append([3, 1])
+        elif beats_per_measure == 5:
+            rhythms.append([1, 1, 1, 1, 1])
+            rhythms.append([2, 1, 1, 1])
+            rhythms.append([2, 1, 1, 0.5, 0.5])
+            rhythms.append([2, 2, 1])
+            rhythms.append([2, 2, 0.5, 0.5])
+            rhythms.append([3, 2])
+            rhythms.append([3, 1, 1])
+            rhythms.append([3, 1, 0.5, 0.5])
+        elif beats_per_measure == 6:
+            rhythms.append([1, 1, 1, 1, 1, 1])
+        elif beats_per_measure == 7:
+            rhythms.append([1, 1, 1, 1, 1, 1, 1])
+
+        cls.chosen_durations = []
+        main_rhythm = random.choices(rhythms)[0]
+        logger.debug("   main rhythm: %s", main_rhythm)
+        for chord in chords:
+            logger.debug("-- Chord duration: %s", chord.duration)
+            if random.choices([True, False], weights=(75, 25))[0]:
+                # Either choose the main rhythm
+                cls.chosen_durations.extend(main_rhythm)
+            else:
+                # Or else a different one
+                cls.chosen_durations.extend(random.choices(rhythms)[0])
+        logger.debug("Chosen durations: %s", cls.chosen_durations)
+        cls.cursor = 0
+
+    @classmethod
     def get_duration(cls):
         """Pick a duration using strategy profile"""
 
-        choice = random.choices(
-            NoteDurationStrategy.durations,
-            weights=NoteDurationStrategy.duration_weights,
-        )[0]
+        choice = cls.chosen_durations[cls.cursor]
+        cls.cursor += 1
+        if cls.cursor >= len(cls.chosen_durations):
+            cls.cursor = 0
+
         return choice
+
+        # choice = random.choices(
+        #    NoteDurationStrategy.durations,
+        #    weights=NoteDurationStrategy.duration_weights,
+        # )[0]
+        # return choice
+
         # Override; everything is an eighth note
-        #return 1 / 2
+        # return 1 / 2
 
 
 def gen_duration():
@@ -208,12 +273,12 @@ def gen_duration():
 
     duration = NoteDurationStrategy.get_duration()
 
-    if duration in [0.5, 0.25] and len(gen_duration.buffer) == 0:
-        # If it was a 8th or 16th note, then make it be a group of 2 to 4 of them
-        if random.choice([True, False]):
-            gen_duration.buffer = [duration, duration, duration, duration]
-        else:
-            gen_duration.buffer = [duration, duration]
+    # if duration in [0.5, 0.25] and len(gen_duration.buffer) == 0:
+    #     # If it was a 8th or 16th note, then make it be a group of 2 to 4 of them
+    #     if random.choice([True, False]):
+    #         gen_duration.buffer = [duration, duration, duration, duration]
+    #     else:
+    #         gen_duration.buffer = [duration, duration]
 
     if len(gen_duration.buffer) > 0:
         # If we have something in the buffer, use it up first
@@ -351,7 +416,7 @@ class Piece:
     """Generatable piece of music"""
 
     # The version of this generative engine
-    version = 13
+    version = 14
 
     def __init__(self, render_chords=True, render_bass=True, render_melody=True):
         self.render_chords = render_chords
@@ -612,6 +677,8 @@ class Piece:
         # repititous note picking for a different chord
         self.iv_stack = []
 
+        NoteDurationStrategy.set_chords(self.beats_per_measure, chords)
+
         notes_data = []
         for chord in chords:
             # Use the stack if we have substance in there
@@ -668,7 +735,7 @@ class Piece:
                 continue
 
             # A rest or a note?
-            if random.choices([True, False], weights=(100, 10))[0]:
+            if random.choices([True, False], weights=(100, 1))[0]:
                 # Choose a new pitch
                 if use_stack and len(self.iv_stack) > 0:
                     do_pitch_by_interval = True
