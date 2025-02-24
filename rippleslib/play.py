@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Play midi file"""
 
-import pygame
 import sys
+from io import StringIO
+from contextlib import redirect_stdout
+
+with redirect_stdout(StringIO()):
+    # This prevents pygame's 'Welcome text'
+    import pygame
 
 # Mixer config
 freq = 44100

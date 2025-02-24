@@ -17,6 +17,31 @@ MAX_TEMPO = 124
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+RHYTHMS = {
+    2: [
+        [2],
+        [1, 1],
+        [1, 0.5, 0.5],
+        [0.5, 0.5, 1],
+        [0.5, 0.5, 0.5, 0.5],
+        [1.5, 0.5],
+        [0.5, 1.5],
+        [0.75, 0.25, 1],
+        [0.75, 0.25, 0.75, 0.25],
+    ],
+    3: [
+        [3],
+        [2, 1],
+        [1, 2],
+        [1, 1, 1],
+        [1, 0.5, 0.5, 1],
+        [2, 0.5, 0.5],
+        [1.5, 0.5, 0.5, 0.5],
+        [1.5, 0.5, 0.75, 0.25],
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+    ],
+}
+
 
 class Note:
     """Represents a midi note"""
@@ -196,55 +221,110 @@ class NoteDurationStrategy:
         logger.debug("======== Making up rhythms ========")
         rhythms = []
         if beats_per_measure == 2:
-            rhythms.append([1, 1])
-            rhythms.append([2])
+            rhythms.extend(RHYTHMS[2])
         elif beats_per_measure == 3:
-            rhythms.append([1, 1, 1])
-            rhythms.append([2, 1])
-            rhythms.append([1, 2])
-            rhythms.append([3])
-            rhythms.append([1.5, 0.5, 0.5, 0.5])
-            rhythms.append([1.5, 0.5, 0.75, 0.25])
-            rhythms.append([2, 0.5, 0.5])
-            rhythms.append([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+            rhythms.extend(RHYTHMS[3])
         elif beats_per_measure == 4:
-            rhythms.append([1, 1, 1, 1])
-            rhythms.append([1, 1, 2])
-            rhythms.append([2, 1, 1])
-            rhythms.append([2, 2])
-            rhythms.append([2, 0.5, 0.5, 1])
-            rhythms.append([1, 0.5, 0.5, 2])
-            rhythms.append([1.5, 0.5, 1, 1])
-            rhythms.append([1.5, 0.5, 2])
-            rhythms.append([1.5, 0.5, 0.5, 0.5, 0.5, 0.5])
-            rhythms.append([0.75, 0.25, 1, 1, 1])
-            rhythms.append([3, 1])
+            rhythms.extend(
+                [
+                    RHYTHMS[2][0] + RHYTHMS[2][0],
+                    RHYTHMS[2][1] + RHYTHMS[2][1],
+                    RHYTHMS[2][2] + RHYTHMS[2][0],
+                    RHYTHMS[2][1] + RHYTHMS[2][0],
+                    RHYTHMS[2][0] + RHYTHMS[2][1],
+                    RHYTHMS[2][0] + RHYTHMS[2][3],
+                    RHYTHMS[2][5] + RHYTHMS[2][1],
+                    RHYTHMS[2][5] + RHYTHMS[2][0],
+                    RHYTHMS[2][5] + RHYTHMS[2][4],
+                    RHYTHMS[2][7] + RHYTHMS[2][1],
+                    [3, 1],
+                ]
+            )
         elif beats_per_measure == 5:
-            rhythms.append([1, 1, 1, 1, 1])
-            rhythms.append([2, 1, 1, 1])
-            rhythms.append([2, 1, 1, 0.5, 0.5])
-            rhythms.append([2, 2, 1])
-            rhythms.append([2, 2, 0.5, 0.5])
-            rhythms.append([3, 2])
-            rhythms.append([3, 1, 1])
-            rhythms.append([3, 1, 0.5, 0.5])
+            rhythms.extend(
+                [
+                    RHYTHMS[3][0] + RHYTHMS[2][0],
+                    RHYTHMS[3][1] + RHYTHMS[2][1],
+                    RHYTHMS[3][2] + RHYTHMS[2][0],
+                    RHYTHMS[3][1] + RHYTHMS[2][0],
+                    RHYTHMS[3][0] + RHYTHMS[2][1],
+                    RHYTHMS[3][0] + RHYTHMS[2][3],
+                    RHYTHMS[3][5] + RHYTHMS[2][1],
+                    RHYTHMS[3][5] + RHYTHMS[2][0],
+                    RHYTHMS[3][5] + RHYTHMS[2][4],
+                    RHYTHMS[3][7] + RHYTHMS[2][1],
+                    RHYTHMS[3][8] + RHYTHMS[2][1],
+                    RHYTHMS[3][1] + RHYTHMS[2][8],
+                ]
+            )
         elif beats_per_measure == 6:
-            rhythms.append([1, 1, 1, 1, 1, 1])
+            rhythms.extend(
+                [
+                    RHYTHMS[3][3] + RHYTHMS[3][3],
+                    RHYTHMS[3][0] + RHYTHMS[3][0],
+                    RHYTHMS[3][0] + RHYTHMS[3][1],
+                    RHYTHMS[3][1] + RHYTHMS[3][0],
+                    RHYTHMS[3][3] + RHYTHMS[3][2],
+                    RHYTHMS[3][2] + RHYTHMS[3][3],
+                    RHYTHMS[3][2] + RHYTHMS[3][1],
+                    RHYTHMS[3][4] + RHYTHMS[3][4],
+                    RHYTHMS[3][4] + RHYTHMS[3][3],
+                    RHYTHMS[3][5] + RHYTHMS[3][4],
+                    RHYTHMS[3][5] + RHYTHMS[3][3],
+                    RHYTHMS[3][5] + RHYTHMS[3][5],
+                    RHYTHMS[3][6] + RHYTHMS[3][6],
+                    RHYTHMS[3][6] + RHYTHMS[3][2],
+                    RHYTHMS[3][6] + RHYTHMS[3][3],
+                    RHYTHMS[3][6] + RHYTHMS[3][4],
+                    RHYTHMS[3][6] + RHYTHMS[3][5],
+                    RHYTHMS[3][5] + RHYTHMS[3][6],
+                    RHYTHMS[3][7] + RHYTHMS[3][7],
+                    RHYTHMS[3][7] + RHYTHMS[3][3],
+                    RHYTHMS[3][7] + RHYTHMS[3][4],
+                    RHYTHMS[3][7] + RHYTHMS[3][5],
+                    RHYTHMS[3][7] + RHYTHMS[3][6],
+                    RHYTHMS[3][6] + RHYTHMS[3][7],
+                    RHYTHMS[3][8] + RHYTHMS[3][8],
+                    RHYTHMS[3][8] + RHYTHMS[3][0],
+                    RHYTHMS[3][0] + RHYTHMS[3][8],
+                    RHYTHMS[3][8] + RHYTHMS[3][3],
+                    RHYTHMS[3][8] + RHYTHMS[3][4],
+                    RHYTHMS[3][8] + RHYTHMS[3][5],
+                    RHYTHMS[3][8] + RHYTHMS[3][6],
+                    RHYTHMS[3][8] + RHYTHMS[3][7],
+                ]
+            )
         elif beats_per_measure == 7:
-            rhythms.append([1, 1, 1, 1, 1, 1, 1])
+            rhythms.extend(
+                [
+                    RHYTHMS[2][0] + RHYTHMS[2][0] + RHYTHMS[3][0],
+                    RHYTHMS[2][1] + RHYTHMS[2][1] + RHYTHMS[3][1],
+                    RHYTHMS[2][2] + RHYTHMS[2][0] + RHYTHMS[3][2],
+                    RHYTHMS[2][1] + RHYTHMS[2][0] + RHYTHMS[3][3],
+                    RHYTHMS[2][0] + RHYTHMS[2][1] + RHYTHMS[3][4],
+                    RHYTHMS[2][0] + RHYTHMS[2][3] + RHYTHMS[3][5],
+                    RHYTHMS[2][5] + RHYTHMS[2][1] + RHYTHMS[3][6],
+                    RHYTHMS[2][5] + RHYTHMS[2][0] + RHYTHMS[3][7],
+                    RHYTHMS[2][5] + RHYTHMS[2][4] + RHYTHMS[3][8],
+                    RHYTHMS[2][7] + RHYTHMS[2][1] + RHYTHMS[3][0],
+                    [3, 1, 2, 1],
+                    [3, 1, 3],
+                    [3, 3, 1],
+                ]
+            )
 
         cls.chosen_durations = []
         main_rhythm = random.choices(rhythms)[0]
         logger.debug("   main rhythm: %s", main_rhythm)
         for chord in chords:
-            logger.debug("-- Chord duration: %s", chord.duration)
             if random.choices([True, False], weights=(75, 25))[0]:
                 # Either choose the main rhythm
-                cls.chosen_durations.extend(main_rhythm)
+                chosen = main_rhythm
             else:
                 # Or else a different one
-                cls.chosen_durations.extend(random.choices(rhythms)[0])
-        logger.debug("Chosen durations: %s", cls.chosen_durations)
+                chosen = random.choices(rhythms)[0]
+            cls.chosen_durations.extend(chosen)
+            logger.debug("-- Chord duration: %s, picked %s", chord.duration, chosen)
         cls.cursor = 0
 
     @classmethod
@@ -427,6 +507,7 @@ class Piece:
         """Generate the entire song (piece)"""
 
         logger.info("-" * 32)
+        logger.info("Ripples v%s", self.version)
         logger.info("Generating melody %s", seed)
         logger.info("-" * 32)
 
@@ -474,7 +555,6 @@ class Piece:
 
         # Select note duration profile
         duration_profile = NoteDurationStrategy.select_duration_profile()
-        logger.info("Note duration profile: %s", duration_profile)
 
         # Select bass style
         self.bass_style = random.choice(["simple", "marco", "marching"])
@@ -886,7 +966,6 @@ def main():
         seed = str(random.randint(0, 65535))
 
     piece = Piece(render_melody=True)
-    print(args)
     midi = piece.generate(seed, in_key=args.key, in_beats=args.beats, in_only=args.one)
 
     filename = f"song-v{Piece.version}-{seed}.mid"
