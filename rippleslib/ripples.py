@@ -554,7 +554,7 @@ class Piece:
         logger.info("Tempo: %s", self.default_tempo)
 
         # Select note duration profile
-        duration_profile = NoteDurationStrategy.select_duration_profile()
+        NoteDurationStrategy.select_duration_profile()
 
         # Select bass style
         self.bass_style = random.choice(["simple", "marco", "marching"])

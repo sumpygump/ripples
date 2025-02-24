@@ -130,25 +130,27 @@ class TestRipples(unittest.TestCase):
         # Deterministic which one will be picked
         random.seed("111")
         ripples.NoteDurationStrategy.select_duration_profile()
+        chord = ripples.Chord(60, inversion=2)
+        ripples.NoteDurationStrategy.set_chords(7, [chord])
 
         value = next(ripples.gen_duration())
-        self.assertEqual(0.25, value)
+        self.assertEqual(3, value)
 
-        # Next one should be a 16th note too
+        # Next one should be a dotted half note
         value = next(ripples.gen_duration())
-        self.assertEqual(0.25, value)
+        self.assertEqual(3, value)
 
-        # And the next one should be a 16th note too
+        # And the next one should be a quarter note
         value = next(ripples.gen_duration())
-        self.assertEqual(0.25, value)
+        self.assertEqual(1, value)
 
-        # ...and the next one should be a 16th note too
+        # ...and the next one should be a dotted half note
         value = next(ripples.gen_duration())
-        self.assertEqual(0.25, value)
+        self.assertEqual(3, value)
 
-        # This one is a half-note
+        # This one is a dotted half note
         value = next(ripples.gen_duration())
-        self.assertEqual(2, value)
+        self.assertEqual(3, value)
         random.seed(None)
 
     @patch("ripples.print")
